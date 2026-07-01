@@ -1,3 +1,7 @@
+Module 0: Git Fundamentals (The Ground Floor)
+
+Welcome to your study notebook for Git Fundamentals. This module covers the essential day-to-day mechanics of local operations, tracing how changes flow from your keyboard to a commit, and understanding local history.
+
 Part 1: Conceptual Deep Dive
 
 To confidently handle architectural SCM discussions at a senior level, you must understand Git's state transitions conceptually, not just memorise its commands.
@@ -5,6 +9,16 @@ To confidently handle architectural SCM discussions at a senior level, you must 
 1. The Three Trees of Git
 
 Git manages your local project files using a three-tiered tree model. These "trees" are not actual directory trees on your filesystem (except for the working directory), but rather conceptual states of your code:
+
+Architectural Flow
+
+graph TD
+    WD[Working Directory<br>Local Files on Disk] -- "git add" --> SA[Staging Area / Index<br>Proposed Commit Snapshot]
+    SA -- "git commit" --> GD[Git Directory / .git<br>Object Database / DAG]
+    GD -- "git restore --source=HEAD" --> WD
+    SA -- "git restore" --> WD
+    GD -- "git restore --staged" --> SA
+
 
 +------------------------+      git add      +----------------------+
 |   Working Directory    | ----------------> |  Staging Area (Index) |
@@ -30,6 +44,19 @@ The Git Directory (Repository / .git): This is where Git stores your project’s
 2. File Lifecycle States
 
 Within a Git-managed directory, every file exists in one of two major classifications: Untracked or Tracked.
+
+State Transition Diagram
+
+stateDiagram-v2
+    [*] --> Untracked : Create New File
+    Untracked --> Staged : git add
+    Unmodified --> Modified : File Edited
+    Modified --> Staged : git add
+    Staged --> Unmodified : git commit
+    Unmodified --> Untracked : git rm --cached
+    Staged --> Modified : git restore --staged
+    Modified --> Unmodified : git restore
+
 
                        [ New File Created ]
                                 |
@@ -63,6 +90,18 @@ Staged: The file is modified, and the changes have been added to the Index, mark
 
 What exactly is HEAD?
 
+graph LR
+    subgraph Standard State
+        HEAD_std[HEAD] --> Branch_std[refs/heads/main]
+        Branch_std --> Commit_C[Commit C: Hash 9a3f2]
+        Commit_C --> Commit_B[Commit B: Hash e4b2c]
+    end
+
+    subgraph Detached HEAD State
+        HEAD_det[HEAD] --> Commit_Target[Commit B: Hash e4b2c]
+    end
+
+
 HEAD is a pointer (a reference): It tells Git which commit is currently checked out in your working directory.
 
 Under Normal Conditions: HEAD points to a local branch reference (e.g., refs/heads/master), which in turn points to a specific commit hash at the tip of that branch's lineage.
@@ -73,15 +112,7 @@ The danger: Any commits you make while in a detached HEAD state will not belong 
 
 4. Modern vs. Legacy Commands
 
-Historically, git checkout was an overloaded "Swiss Army knife" command. It was used to:
-
-Switch branches (git checkout master)
-
-Create and switch branches (git checkout -b feature)
-
-Discard local changes in a file (git checkout -- file.txt)
-
-To reduce user error and separate these distinct actions, Git v2.23 introduced two highly focused commands:
+Historically, git checkout was an overloaded "Swiss Army knife" command. To reduce user error and separate these distinct actions, Git v2.23 introduced two highly focused commands:
 
 Legacy Operation
 
@@ -128,14 +159,18 @@ git init
 # 2. Inspect the raw contents of the created metadata folder
 ls -la .git
 
-# Output notes:
-# - 'HEAD' is a text file pointing to your active branch (e.g. ref: refs/heads/main)
-# - 'objects/' is your database (currently empty)
-# - 'refs/' will store your local and remote branches/tags
+# Expected Directories inside .git/
+# - HEAD: Text file containing reference to current branch pointer
+# - config: Repository-specific configuration variables (remotes, user identity, etc.)
+# - description: Used by the GitWeb program
+# - hooks/: Client-side or server-side scripts triggered on actions (pre-commit, pre-push)
+# - info/exclude: Workspace-specific ignore patterns (unlike .gitignore, this isn't pushed)
+# - objects/: Object database (will contain blobs, trees, commits, tags)
+# - refs/: References folder (heads for branches, tags for release tags)
 
 # 3. View the default HEAD value
 cat .git/HEAD
-# Expect output: ref: refs/heads/main (or master, depending on global configuration)
+# Expect output: ref: refs/heads/main (or master, depending on global system settings)
 
 
 Lab 2: The Staging Pipeline & Staging Patches (Atomic Commits)
@@ -162,7 +197,7 @@ API_TIMEOUT = 15
 DEBUG_MODE = True
 EOF
 
-# 4. If we run standard 'git add', we stage both. Instead, let's stage ONLY the API_TIMEOUT change!
+# 4. If we run standard 'git add', we stage both. Instead, stage ONLY the API_TIMEOUT change!
 # Run interactive patch mode:
 git add -p app_config.py
 
@@ -218,7 +253,6 @@ git switch -c feature/vault-integration
 echo "VAULT_ADDR = '[https://vault.internal:8200](https://vault.internal:8200)'" >> app_config.py
 
 # 3. You realize this is wrong. You want to completely discard your uncommitted modification.
-# Legacy method was: git checkout -- app_config.py
 # Modern, safe command:
 git restore app_config.py
 
