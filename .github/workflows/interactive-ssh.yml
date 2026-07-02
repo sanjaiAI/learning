@@ -1,4 +1,4 @@
-name: Interactive SSH Session
+name: Interactive SSH to VM
 
 on:
   workflow_dispatch:
@@ -9,21 +9,57 @@ on:
         default: "debug"
 
 jobs:
-  interactive-session:
-    name: Start tmate interactive SSH
+  interactive-vm-session:
+    name: Interactive shell on Cloud VM
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install tmate
+      - name: Setup SSH key
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y tmate
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Start tmate session (interactive shell in Actions runner)
-        uses: mxschmitt/action-tmate@v3
-        with:
-          limit-access-to-actor: true   # only YOU can connect
-        timeout-minutes: 30
+      - name: Install tmate on VM
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+            "which tmate || (apt-get update -qq && apt-get install -y tmate)"
+
+      - name: Start tmate on VM and get connection string
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} bash -s << 'REMOTE'
+          # Kill any existing tmate sessions
+          tmux kill-server 2>/dev/null || true
+
+          # Start tmate in detached mode
+          tmate -S /tmp/tmate.sock new-session -d
+
+          # Wait for tmate to establish connection
+          sleep 5
+          tmate -S /tmp/tmate.sock wait tmate-ready
+
+          # Print connection info
+          echo "============================================="
+          echo "  INTERACTIVE SSH SESSION TO YOUR VM"
+          echo "============================================="
+          echo ""
+          echo "SSH connection:"
+          tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'
+          echo ""
+          echo "Web session:"
+          tmate -S /tmp/tmate.sock display -p '#{tmate_web}'
+          echo ""
+          echo "============================================="
+          echo "Session will stay alive for 30 minutes."
+          echo "============================================="
+          REMOTE
+
+      - name: Keep alive (waiting for you to finish)
+        run: |
+          echo "Session is active on your VM. Waiting..."
+          echo "Cancel this workflow when you're done."
+          sleep 1700
