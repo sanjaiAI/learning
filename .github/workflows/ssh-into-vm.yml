@@ -1,0 +1,32 @@
+name: SSH into Cloud VM
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Command to run on the VM"
+        required: true
+        default: "uptime && df -h"
+
+jobs:
+  ssh-vm:
+    name: Run command on Cloud VM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install SSH client
+        run: sudo apt-get install -y openssh-client
+
+      - name: Add private key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Run command on VM
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=no \
+              ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+              "${{ github.event.inputs.command }}"

@@ -1,0 +1,29 @@
+name: Interactive SSH Session
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for interactive session"
+        required: true
+        default: "debug"
+
+jobs:
+  interactive-session:
+    name: Start tmate interactive SSH
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tmate
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y tmate
+
+      - name: Start tmate session (interactive shell in Actions runner)
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true   # only YOU can connect
+        timeout-minutes: 30
