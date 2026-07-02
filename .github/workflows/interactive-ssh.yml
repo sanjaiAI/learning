@@ -12,7 +12,7 @@ jobs:
   interactive-vm-session:
     name: Interactive shell on Cloud VM
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Setup SSH key
@@ -22,44 +22,56 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Install tmate on VM
-        run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
-            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
-            "which tmate || (apt-get update -qq && apt-get install -y tmate)"
-
-      - name: Start tmate on VM and get connection string
+      - name: Install upterm on VM
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} bash -s << 'REMOTE'
-          # Kill any existing tmate sessions
-          tmux kill-server 2>/dev/null || true
+          if ! command -v upterm &>/dev/null; then
+            curl -sL https://github.com/owenthereal/upterm/releases/latest/download/upterm_linux_amd64.tar.gz | tar xz -C /usr/local/bin
+          fi
+          echo "upterm ready: $(upterm version)"
+          REMOTE
 
-          # Start tmate in detached mode
-          tmate -S /tmp/tmate.sock new-session -d
+      - name: Start interactive session on VM
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} bash -s << 'REMOTE'
+          # Kill any existing upterm sessions
+          pkill -f upterm 2>/dev/null || true
+          sleep 1
 
-          # Wait for tmate to establish connection
-          sleep 5
-          tmate -S /tmp/tmate.sock wait tmate-ready
+          # Generate a host key for upterm
+          rm -f /tmp/upterm_host_key
+          ssh-keygen -t ed25519 -f /tmp/upterm_host_key -N "" -q
 
-          # Print connection info
+          # Start upterm session in background
+          nohup upterm host --server ssh://uptermd.upterm.dev:22 \
+            --force-command bash \
+            --private-key /tmp/upterm_host_key \
+            -- bash > /tmp/upterm.log 2>&1 &
+
+          # Wait for session to be ready
+          for i in $(seq 1 30); do
+            if upterm session current 2>/dev/null | grep -q "SSH"; then
+              break
+            fi
+            sleep 2
+          done
+
           echo "============================================="
           echo "  INTERACTIVE SSH SESSION TO YOUR VM"
           echo "============================================="
           echo ""
-          echo "SSH connection:"
-          tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'
-          echo ""
-          echo "Web session:"
-          tmate -S /tmp/tmate.sock display -p '#{tmate_web}'
+          upterm session current
           echo ""
           echo "============================================="
-          echo "Session will stay alive for 30 minutes."
+          echo "Session will stay alive for ~30 minutes."
+          echo "Cancel this workflow when done."
           echo "============================================="
           REMOTE
 
       - name: Keep alive (waiting for you to finish)
         run: |
-          echo "Session is active on your VM. Waiting..."
-          echo "Cancel this workflow when you're done."
-          sleep 1700
+          echo "Session is active on your VM. Waiting for you to finish..."
+          echo "Cancel this workflow run when you're done."
+          sleep 1800
