@@ -13,10 +13,19 @@
 | Requirement | Detail |
 |-------------|--------|
 | **Teaching Style** | Storytelling — explain like a story, not a textbook. Use real-world scenarios. |
-| **Language** | Bilingual — complete, natural Tamil translation (not transliteration). Every section fully in both languages. |
+| **Language Format** | **TWO VERSIONS**: First complete English version, then complete Tamil version of the SAME content. Not mixed — two separate blocks. |
 | **Interview Prep** | Each section must have "🧠 Byheart for Interview" — exact points/commands to memorize. |
 | **Hands-on** | Each section must have "⚡ Quick Hands-on" — a 2-5 minute exercise to run on server. |
 | **Analogies** | Tamil analogies from daily life (கடை, சமையல், பேருந்து, etc.) |
+
+### Language Format Example:
+```
+**English:**
+[Full explanation in English]
+
+**தமிழ்:**
+[Same full explanation in Tamil — not transliteration, proper Tamil]
+```
 
 ---
 
