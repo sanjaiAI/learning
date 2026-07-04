@@ -1,76 +1,81 @@
-# Module 05: Configuration & Secrets Management
+# Module 05: Configuration & Secrets
+# மாடுல் 05: Configuration & Secrets (அமைப்பு & ரகசியங்கள்)
 
-## Why this matters for your profile
-You integrate HashiCorp Vault, manage pipeline credentials, and enforce zero-hardcoded-secrets policies. This module covers native K8s config management and how it integrates with external secret stores you already use.
+---
 
-## Concept Clarity
+## 🎯 What? | என்ன?
 
-### ConfigMaps vs Secrets
-| Feature | ConfigMap | Secret |
-|---------|-----------|--------|
-| Purpose | Non-sensitive config | Sensitive data |
-| Encoding | Plain text | Base64 (not encryption!) |
-| Size limit | 1 MiB | 1 MiB |
-| Mounting | Env vars or volume | Env vars or volume |
-| At-rest encryption | No (unless enabled) | Optional (EncryptionConfiguration) |
+**English:** ConfigMaps store non-sensitive config. Secrets store sensitive data (passwords, tokens). Both inject configuration into pods without hardcoding.
 
-### Secret Types
-| Type | Usage |
-|------|-------|
-| Opaque | Generic key-value |
-| kubernetes.io/tls | TLS cert + key |
-| kubernetes.io/dockerconfigjson | Image pull credentials |
-| kubernetes.io/service-account-token | SA token (legacy) |
+**தமிழ்:** ConfigMaps = sensitive இல்லாத config (DB host, log level). Secrets = sensitive data (passwords, API keys). இரண்டும் hardcode இல்லாமல் pods-க்கு config inject செய்கின்றன.
 
-### External Secret Management (Enterprise Patterns)
-| Tool | Integration |
-|------|-------------|
-| HashiCorp Vault | CSI driver, sidecar injector, External Secrets Operator |
-| Azure Key Vault | CSI driver, workload identity |
-| GCP Secret Manager | CSI driver, workload identity |
-| External Secrets Operator (ESO) | Syncs external secrets → K8s Secrets |
-| Sealed Secrets (Bitnami) | Encrypted secrets safe for Git |
+### Analogy | உதாரணம்
+> ConfigMap = Office notice board (everyone can read) | அறிவிப்பு பலகை
+> Secret = Locker with key (restricted access) | பூட்டிய locker
+> Both avoid writing directly on the wall (hardcoding) | நேரடியாக wall-ல் எழுதாதீர்கள்
 
-### Immutable ConfigMaps/Secrets
-- `immutable: true` — prevents accidental updates, improves performance (no watch)
+---
 
-## Command Mastery
+## ⚠️ Important Truth | முக்கிய உண்மை
+
+**Kubernetes Secrets are NOT encrypted by default!** They're only base64-encoded (anyone can decode).
+
+**தமிழ்:** K8s Secrets default-ஆ encrypt ஆகவில்லை! base64 மட்டுமே — யாரும் decode செய்யலாம்.
 
 ```bash
-# ConfigMap from literal
+# "Secrets" are easily decoded — NOT truly secret!
+echo "cGFzc3dvcmQxMjM=" | base64 -d
+# Output: password123    ← யாரும் படிக்கலாம்!
+```
+
+### Real Security = External Secret Stores
+
+| Tool | How it integrates | உங்கள் அனுபவம் |
+|------|------------------|----------------|
+| **HashiCorp Vault** | CSI driver / Sidecar / ESO | ✅ You use this at EB |
+| **Azure Key Vault** | CSI driver / Workload Identity | ✅ AKS clusters |
+| **GCP Secret Manager** | CSI driver / Workload Identity | ✅ GKE clusters |
+| **External Secrets Operator** | Syncs external → K8s Secret | Industry standard |
+| **Sealed Secrets** | Encrypted, safe for Git | GitOps-friendly |
+
+---
+
+## 🛠️ Commands | Commands
+
+```bash
+# --- ConfigMap ---
+# Literal values-லிருந்து create
 kubectl create configmap app-config \
   --from-literal=DB_HOST=postgres.svc \
   --from-literal=LOG_LEVEL=info
 
-# ConfigMap from file
-echo "server.port=8080" > app.properties
-kubectl create configmap app-file-config --from-file=app.properties
+# File-லிருந்து create
+kubectl create configmap nginx-conf --from-file=nginx.conf
 
-# Secret from literal
+# --- Secrets ---
 kubectl create secret generic db-creds \
   --from-literal=username=admin \
-  --from-literal=password=s3cur3P@ss
+  --from-literal=password=MyP@ssw0rd
 
-# TLS Secret
-kubectl create secret tls my-tls \
-  --cert=tls.crt --key=tls.key
+# TLS secret
+kubectl create secret tls my-tls --cert=tls.crt --key=tls.key
 
 # Docker registry secret
 kubectl create secret docker-registry regcred \
   --docker-server=myregistry.io \
-  --docker-username=user \
-  --docker-password=pass
+  --docker-username=user --docker-password=pass
 
-# Using ConfigMap and Secret in a Pod
+# --- Pod-ல் use செய்வது ---
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
-  name: config-demo
+  name: app
 spec:
   containers:
   - name: app
-    image: nginx:1.25
+    image: nginx
+    # Method 1: Environment variables ஆக inject
     env:
     - name: DB_HOST
       valueFrom:
@@ -82,6 +87,7 @@ spec:
         secretKeyRef:
           name: db-creds
           key: password
+    # Method 2: Files ஆக mount
     volumeMounts:
     - name: config-vol
       mountPath: /etc/config
@@ -91,53 +97,18 @@ spec:
       readOnly: true
   volumes:
   - name: config-vol
-    configMap:
-      name: app-config
+    configMap: {name: app-config}
   - name: secret-vol
     secret:
       secretName: db-creds
-      defaultMode: 0400
+      defaultMode: 0400    # Read-only permissions
 EOF
 
-# Verify
-kubectl exec config-demo -- env | grep DB
-kubectl exec config-demo -- cat /etc/secrets/password
-kubectl exec config-demo -- ls -la /etc/secrets/
+# --- Verify ---
+kubectl exec app -- env | grep DB       # Env var check
+kubectl exec app -- cat /etc/secrets/password  # File check
 
-# Immutable ConfigMap
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: immutable-config
-data:
-  key: value
-immutable: true
-EOF
-
-# envFrom (inject all keys)
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
-metadata:
-  name: envfrom-demo
-spec:
-  containers:
-  - name: app
-    image: busybox
-    command: ['sh', '-c', 'env && sleep 3600']
-    envFrom:
-    - configMapRef:
-        name: app-config
-    - secretRef:
-        name: db-creds
-  restartPolicy: Never
-EOF
-```
-
-### External Secrets Operator (ESO)
-```bash
-# ExternalSecret syncing from Vault/Azure/GCP
+# --- External Secrets Operator example ---
 cat <<EOF | kubectl apply -f -
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
@@ -158,47 +129,60 @@ spec:
 EOF
 ```
 
-### Secret encryption at rest
-```bash
-# Check if encryption is enabled
-kubectl get apiserver -o yaml | grep -i encrypt
+---
 
-# EncryptionConfiguration example (for kubeadm)
-# /etc/kubernetes/enc/enc.yaml
-# apiVersion: apiserver.config.k8s.io/v1
-# kind: EncryptionConfiguration
-# resources:
-# - resources: [secrets]
-#   providers:
-#   - aescbc:
-#       keys:
-#       - name: key1
-#         secret: <base64-encoded-32-byte-key>
-#   - identity: {}
+## 📋 Cheat Sheet | விரைவு குறிப்பு
+
+```
+┌──────────────────────────────────────────────────────┐
+│         CONFIG & SECRETS CHEAT SHEET                 │
+├──────────────────────────────────────────────────────┤
+│ ConfigMap = non-sensitive config (notice board)       │
+│ Secret   = sensitive data (locker) — NOT encrypted!  │
+│                                                      │
+│ INJECT METHODS:                                      │
+│   1. env vars   → envFrom / valueFrom                │
+│   2. files      → volumeMounts                       │
+│                                                      │
+│ env var  = pod restart வேண்டும் update-க்கு          │
+│ file mount = auto-updates (kubelet sync ~60s)        │
+│                                                      │
+│ REAL SECURITY:                                       │
+│   Vault + ESO → K8s Secret → Pod                     │
+│   Workload Identity → No static credentials          │
+│   Sealed Secrets → Safe for Git                      │
+│                                                      │
+│ ENCRYPT AT REST:                                     │
+│   EncryptionConfiguration on API server              │
+│   Or use cloud KMS (Azure/GCP)                       │
+└──────────────────────────────────────────────────────┘
 ```
 
-## Practical Lab
+---
 
-### Exercises
-1. Create a ConfigMap and Secret, mount both in a pod, and verify access
-2. Update a ConfigMap mounted as a volume — observe how long the pod takes to see the change (kubelet sync period)
-3. Create an immutable ConfigMap and try to update it — observe the error
-4. Set up External Secrets Operator and sync a secret from a mock SecretStore
-5. Create a docker-registry secret and use it as `imagePullSecrets`
-6. Demonstrate why base64 is NOT encryption — decode a secret with `kubectl get secret db-creds -o jsonpath='{.data.password}' | base64 -d`
+## 🎤 Interview Q&A | நேர்முகத் தேர்வு
 
-### Pass Criteria
-- You can explain why K8s Secrets are not truly secure by default
-- You know the difference between env var injection vs volume mount (update behavior)
-- You can design a secrets management strategy using Vault + ESO/CSI
-- You understand encryption at rest configuration
+**Q: K8s Secrets are base64, not encrypted. How do you secure them?**
+- Encrypt at rest (EncryptionConfiguration + KMS)
+- Use External Secrets Operator + Vault/Cloud KMS
+- RBAC: restrict who can read secrets
+- Audit logging on secret access
 
-## Mock Interview Questions
+**Q: Env var vs volume mount — difference?**
+- Env var: pod restart வேண்டும் update-க்கு. Simple to use.
+- Volume: auto-updates (~60s). Better for files (certs, configs).
 
-1. **Kubernetes Secrets are base64-encoded, not encrypted. How do you secure them in production?**
-2. **Compare the approaches: Vault sidecar injector vs CSI driver vs External Secrets Operator. Which would you choose and why?**
-3. **A team accidentally committed a Secret to Git. What's your incident response?**
-4. **How do ConfigMap updates propagate to running pods? What's the delay?**
-5. **Design a secrets management architecture for a multi-tenant CI/CD platform.**
-6. **What's the difference between mounting a secret as a volume vs injecting as an env var? When would you prefer each?**
-7. **How does workload identity eliminate the need for static credentials in cloud environments?**
+**Q: Team accidentally committed secret to Git. Response?**
+1. Immediately rotate the credential
+2. Remove from Git history (`git filter-branch` or BFG)
+3. Audit access logs
+4. Implement Gitleaks/pre-commit hooks to prevent
+
+---
+
+## ✅ Self-Check | சுய மதிப்பீடு
+
+- [ ] ConfigMap vs Secret difference explain முடியும்
+- [ ] Secrets are NOT encrypted — explain why & fix
+- [ ] Vault/ESO integration design செய்ய முடியும்
+- [ ] env vs mount trade-offs சொல்ல முடியும்

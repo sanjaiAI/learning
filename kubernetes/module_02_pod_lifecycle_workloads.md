@@ -1,232 +1,152 @@
 # Module 02: Pod Lifecycle & Workload Resources
+# மாடுல் 02: Pod வாழ்க்கைச் சுழற்சி & Workload Resources
 
-## Why this matters for your profile
-You manage CI/CT workloads (build pods, test runners, emulator pods) on Kubernetes. Understanding pod lifecycle, init containers, and workload controllers is essential for designing reliable pipeline execution environments.
+---
 
-## Concept Clarity
+## 🎯 What is a Pod? | Pod என்றால் என்ன?
 
-### Pod Phases
-| Phase | Description |
-|-------|-------------|
-| Pending | Accepted but not yet scheduled or images pulling |
-| Running | At least one container is running |
-| Succeeded | All containers terminated with exit code 0 |
-| Failed | At least one container terminated with non-zero |
-| Unknown | Node communication lost |
+**English:** A Pod is the smallest deployable unit in Kubernetes — a wrapper around one or more containers that share network and storage.
 
-### Container States
-- **Waiting:** Pulling image, creating container
-- **Running:** Executing without issues
-- **Terminated:** Finished (success or failure)
+**தமிழ்:** Pod என்பது Kubernetes-ல் மிகச்சிறிய deploy செய்யக்கூடிய அலகு — ஒன்று அல்லது அதற்கு மேற்பட்ட containers-ஐ wrap செய்வது.
 
-### Pod Lifecycle Hooks
-| Hook | When | Use Case |
-|------|------|----------|
-| postStart | After container start | Initialization tasks |
-| preStop | Before SIGTERM | Graceful shutdown, drain connections |
+### Analogy | உதாரணம்
+> Pod = ஒரு அறை (room). Containers = அறையில் உள்ள நபர்கள். எல்லா நபர்களும் ஒரே bathroom (network) & kitchen (storage) share செய்கின்றனர்.
 
-### Probes
-| Probe | Purpose | Failure Action |
-|-------|---------|----------------|
-| startupProbe | App has started | Kills container |
-| livenessProbe | App is alive | Restarts container |
-| readinessProbe | App can serve traffic | Removes from Service |
+---
 
-### Workload Resources
-| Resource | Use Case |
-|----------|----------|
-| Deployment | Stateless apps, rolling updates |
-| StatefulSet | Ordered deployment, stable network identity |
-| DaemonSet | One pod per node (monitoring, log agents) |
-| Job | Run-to-completion (CI builds, batch) |
-| CronJob | Scheduled jobs |
-| ReplicaSet | Maintained by Deployment (rarely used directly) |
-
-## Diagram: Pod Lifecycle
+## 📊 Pod Phases | Pod நிலைகள்
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Pending
-    Pending --> Running: Scheduled + Containers started
-    Running --> Succeeded: All containers exit 0
-    Running --> Failed: Container exits non-zero
+    [*] --> Pending: Pod created
+    Pending --> Running: Scheduled + Started
+    Running --> Succeeded: Exit 0 ✓
+    Running --> Failed: Exit non-zero ✗
     Running --> Unknown: Node lost
-    Pending --> Failed: Image pull error / Unschedulable
 ```
 
-## Command Mastery
+| Phase | English | தமிழ் | Analogy |
+|-------|---------|-------|---------|
+| Pending | Waiting for node assignment | Node assign ஆக காத்திருக்கிறது | Job interview-க்கு wait செய்வது |
+| Running | Container(s) alive | Container(s) உயிருடன் | Office-ல் work செய்கிறார் |
+| Succeeded | Finished successfully | வெற்றிகரமாக முடிந்தது | Task complete, left office |
+| Failed | Container crashed | Crash ஆனது | Employee collapsed |
+| Unknown | Node unreachable | Node-ஐ reach செய்ய முடியவில்லை | Phone unreachable |
 
-### Pod operations
+---
+
+## 🏥 Probes (Health Checks) | ஆரோக்கிய சோதனை
+
+**Doctor analogy:** Probes = Doctor checking patients
+**தமிழ்:** Probes = Doctor patients-ஐ check செய்வது
+
+| Probe | Question | Fail = | தமிழ் |
+|-------|----------|--------|-------|
+| **startupProbe** | "Did you wake up?" | Kill & restart | "எழுந்தீர்களா?" → இல்ல = restart |
+| **livenessProbe** | "Are you alive?" | Kill & restart | "உயிருடன் இருக்கீர்களா?" → இல்ல = restart |
+| **readinessProbe** | "Can you work?" | No traffic sent | "வேலை செய்ய முடியுமா?" → இல்ல = traffic நிறுத்து |
+
+---
+
+## 🏭 Controllers | கட்டுப்படுத்திகள்
+
+| Controller | When to use | தமிழ் உதாரணம் |
+|-----------|-------------|---------------|
+| **Deployment** | Always-running stateless apps | Restaurant-ல் 5 waiters வேண்டும் |
+| **StatefulSet** | Databases, ordered identity | Hospital beds (Bed 1, 2, 3) |
+| **DaemonSet** | One pod per node | ஒவ்வொரு floor-லும் 1 security guard |
+| **Job** | Run once, finish | Parcel delivery — deliver செய்தால் முடிந்தது |
+| **CronJob** | Scheduled runs | தினமும் காலை 6 alarm |
+
+---
+
+## 🛠️ Commands | Commands
+
 ```bash
-# Create a pod
-kubectl run nginx --image=nginx:1.25 --restart=Never
-kubectl run busybox --image=busybox --restart=Never -- sleep 3600
+# --- Pod ---
+kubectl run nginx --image=nginx:1.25 --restart=Never   # Pod உருவாக்கு
+kubectl get pods -o wide                                # Pods list பாரு
+kubectl describe pod nginx                              # Full details
+kubectl logs nginx                                      # Logs பாரு
+kubectl logs nginx --previous                           # Crashed container logs
+kubectl exec -it nginx -- /bin/sh                       # Pod-க்குள் நுழை
+kubectl delete pod nginx                                # Pod delete
 
-# Multi-container pod (sidecar pattern)
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
-metadata:
-  name: sidecar-demo
-spec:
-  containers:
-  - name: app
-    image: nginx:1.25
-    ports:
-    - containerPort: 80
-  - name: log-collector
-    image: busybox
-    command: ['sh', '-c', 'while true; do echo "$(date) - collecting logs"; sleep 5; done']
-EOF
+# --- Deployment ---
+kubectl create deployment web --image=nginx:1.24 --replicas=3   # 3 copies
+kubectl set image deployment/web nginx=nginx:1.25               # Update image
+kubectl rollout status deployment/web                           # Update status
+kubectl rollout history deployment/web                          # History
+kubectl rollout undo deployment/web                             # Rollback!
 
-# Init containers
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
-metadata:
-  name: init-demo
-spec:
-  initContainers:
-  - name: wait-for-service
-    image: busybox
-    command: ['sh', '-c', 'until nslookup myservice; do echo waiting; sleep 2; done']
-  containers:
-  - name: app
-    image: nginx:1.25
-EOF
+# --- Job ---
+kubectl create job build --image=alpine -- sh -c 'echo done'   # One-time job
+kubectl get jobs                                                # Status
+kubectl logs job/build                                          # Job logs
 
-# Inspect pod lifecycle
-kubectl get pod nginx -o yaml | grep -A 5 status
-kubectl describe pod nginx | grep -A 10 Events
-kubectl logs nginx
-kubectl logs sidecar-demo -c log-collector
-kubectl exec -it nginx -- /bin/sh
+# --- Probes (YAML) ---
+# livenessProbe:
+#   httpGet: {path: /, port: 80}
+#   initialDelaySeconds: 5
+#   periodSeconds: 10
+
+# --- Debugging ---
+kubectl describe pod <name> | tail -20                 # Events section
+kubectl get events --field-selector involvedObject.name=<pod>
 ```
 
-### Probes
-```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
-metadata:
-  name: probe-demo
-spec:
-  containers:
-  - name: app
-    image: nginx:1.25
-    livenessProbe:
-      httpGet:
-        path: /
-        port: 80
-      initialDelaySeconds: 5
-      periodSeconds: 10
-    readinessProbe:
-      httpGet:
-        path: /
-        port: 80
-      initialDelaySeconds: 3
-      periodSeconds: 5
-    startupProbe:
-      httpGet:
-        path: /
-        port: 80
-      failureThreshold: 30
-      periodSeconds: 2
-EOF
+---
+
+## 📋 Cheat Sheet | விரைவு குறிப்பு
+
+```
+┌─────────────────────────────────────────────────┐
+│         POD & WORKLOAD CHEAT SHEET              │
+├─────────────────────────────────────────────────┤
+│ PHASES: Pending → Running → Succeeded/Failed    │
+│                                                 │
+│ PROBES:                                         │
+│   startup  → "Started?"  fail=kill              │
+│   liveness → "Alive?"    fail=restart           │
+│   readiness→ "Ready?"    fail=no traffic        │
+│                                                 │
+│ CONTROLLERS:                                    │
+│   Deployment  = நிரந்தர app (web server)        │
+│   Job         = ஒரு முறை run (CI build)         │
+│   CronJob     = schedule (nightly test)         │
+│   DaemonSet   = every node (monitoring)         │
+│   StatefulSet = database (ordered)              │
+│                                                 │
+│ ROLLING UPDATE:                                 │
+│   maxSurge=25%        (extra pods allowed)      │
+│   maxUnavailable=25%  (pods that can be down)   │
+│   kubectl rollout undo = ROLLBACK               │
+└─────────────────────────────────────────────────┘
 ```
 
-### Workload controllers
-```bash
-# Deployment with rolling update
-kubectl create deployment web --image=nginx:1.24 --replicas=3
-kubectl set image deployment/web nginx=nginx:1.25
-kubectl rollout status deployment/web
-kubectl rollout history deployment/web
-kubectl rollout undo deployment/web
+---
 
-# Job (CI build simulation)
-cat <<EOF | kubectl apply -f -
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: build-job
-spec:
-  backoffLimit: 3
-  activeDeadlineSeconds: 300
-  template:
-    spec:
-      containers:
-      - name: build
-        image: alpine
-        command: ['sh', '-c', 'echo "Building..." && sleep 10 && echo "Done"']
-      restartPolicy: Never
-EOF
+## 🎤 Interview Q&A | நேர்முகத் தேர்வு
 
-kubectl get jobs
-kubectl logs job/build-job
+**Q: Pod CrashLoopBackOff — how to debug?**
+1. `kubectl describe pod` → Events பாரு
+2. `kubectl logs --previous` → Crash logs பாரு
+3. Exit code: OOMKilled? Missing config? App bug?
 
-# CronJob (nightly regression trigger)
-cat <<EOF | kubectl apply -f -
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: nightly-regression
-spec:
-  schedule: "0 2 * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-          - name: trigger
-            image: curlimages/curl
-            command: ['sh', '-c', 'curl -X POST http://jenkins:8080/job/nightly/build']
-          restartPolicy: OnFailure
-EOF
+**Q: Job vs Deployment எப்போது use செய்வது?**
+- Job = ஒரு முறை செய் (build, migration, backup)
+- Deployment = எப்போதும் run ஆகணும் (web server, API)
 
-# DaemonSet
-kubectl get daemonsets -n kube-system
+**Q: Rolling update எப்படி works?**
+- புதிய pods படிப்படியாக வருகின்றன, பழையவை போகின்றன
+- `maxSurge` & `maxUnavailable` speed control செய்கின்றன
 
-# StatefulSet
-kubectl get statefulsets --all-namespaces
-```
+---
 
-### Debugging pod issues
-```bash
-# Why is pod not starting?
-kubectl get pod <name> -o yaml | grep -A 20 conditions
-kubectl describe pod <name> | tail -30
-kubectl get events --field-selector involvedObject.name=<name>
+## ✅ Self-Check | சுய மதிப்பீடு
 
-# Image pull issues
-kubectl describe pod <name> | grep -i "failed\|error\|back-off"
-
-# OOMKilled
-kubectl get pod <name> -o jsonpath='{.status.containerStatuses[0].lastState}'
-```
-
-## Practical Lab
-
-### Exercises
-1. Create a pod with an init container that waits for a service, then deploy the service and watch the pod start
-2. Configure all three probes on a pod — kill the liveness endpoint and observe restart behavior
-3. Create a Deployment, perform a rolling update, observe the ReplicaSet transition, then rollback
-4. Create a Job with `backoffLimit: 3` that intentionally fails — observe retry behavior
-5. Create a parallel Job (completions: 5, parallelism: 2) simulating parallel CI test execution
-6. Design a pod spec for your Android emulator workload (resource requests, init containers for image pull, liveness for emulator health)
-
-### Pass Criteria
-- You can explain what happens at each pod phase transition
-- You can choose the right workload controller for any given scenario
-- You can troubleshoot a pod stuck in Pending, CrashLoopBackOff, or ImagePullBackOff
-- You understand graceful shutdown (preStop + terminationGracePeriodSeconds)
-
-## Mock Interview Questions
-
-1. **A pod is in CrashLoopBackOff. Walk me through your debugging steps.**
-2. **When would you use a Job vs a Deployment for CI workloads?**
-3. **Explain the difference between liveness and readiness probes. What happens if you misconfigure them?**
-4. **How does a rolling update work internally? What controls the rollout speed?**
-5. **Design a pod spec for a CI build agent that needs privileged access, 4 CPU cores, and 8GB RAM with proper resource governance.**
-6. **What is the purpose of `terminationGracePeriodSeconds` and how have you used preStop hooks?**
-7. **How do init containers help in your CI/CD pipeline architecture?**
+- [ ] Pod phases explain செய்ய முடியும்
+- [ ] 3 probes differentiate செய்ய முடியும்
+- [ ] Right controller select செய்ய முடியும்
+- [ ] CrashLoopBackOff debug செய்ய முடியும்
+- [ ] Rolling update + rollback செய்ய முடியும்

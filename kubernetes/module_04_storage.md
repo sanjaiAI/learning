@@ -1,178 +1,174 @@
-# Module 04: Storage (PV, PVC, StorageClass, CSI)
+# Module 04: Storage
+# மாடுல் 04: Storage (சேமிப்பு)
 
-## Why this matters for your profile
-CI/CD workloads need persistent storage — build caches, artifact staging, test results. You manage both cloud (Azure Disk, GCP PD) and on-prem storage. Understanding CSI drivers and dynamic provisioning is essential for platform reliability.
+---
 
-## Concept Clarity
+## 🎯 What? | என்ன?
 
-### Storage Hierarchy
+**English:** Kubernetes storage lets pods keep data that survives restarts. Without it, everything in a container disappears when the pod dies.
+
+**தமிழ்:** Kubernetes storage = pods data-ஐ நிலையாக வைக்க உதவுகிறது. இது இல்லாமல், pod die ஆனால் எல்லா data-வும் போய்விடும்.
+
+### Analogy | உதாரணம்
+> Container without storage = Writing on a whiteboard (erase when done)
+> Container with PVC = Writing in a notebook (keeps forever)
+
+> Storage இல்லாம = Whiteboard-ல் எழுதுவது (அழிந்துவிடும்)
+> PVC உடன் = Notebook-ல் எழுதுவது (நிலையாக இருக்கும்)
+
+---
+
+## 📊 Storage Hierarchy | Storage படிநிலை
+
+```mermaid
+graph TD
+    SC[StorageClass<br/>எப்படி storage உருவாக்குவது] --> PV[PersistentVolume<br/>உண்மையான storage]
+    PV --> PVC[PersistentVolumeClaim<br/>User-ன் request]
+    PVC --> POD[Pod<br/>Uses the storage]
 ```
-StorageClass → defines HOW storage is provisioned
-    ↓
-PersistentVolume (PV) → actual storage resource
-    ↓
-PersistentVolumeClaim (PVC) → user's request for storage
-    ↓
-Pod → mounts PVC as volume
-```
 
-### Volume Types
-| Type | Use Case |
-|------|----------|
-| emptyDir | Temp scratch space (dies with pod) |
-| hostPath | Node-local path (avoid in production) |
-| PersistentVolumeClaim | Durable storage |
-| configMap / secret | Inject config as files |
-| projected | Combine multiple sources |
-| CSI | Cloud/vendor storage drivers |
+Simple version: **StorageClass** (template) → **PV** (actual disk) → **PVC** (user's request) → **Pod** (uses it)
 
-### Access Modes
-| Mode | Abbr | Description |
-|------|------|-------------|
-| ReadWriteOnce | RWO | Single node read/write |
-| ReadOnlyMany | ROX | Many nodes read-only |
-| ReadWriteMany | RWX | Many nodes read/write |
-| ReadWriteOncePod | RWOP | Single pod (K8s 1.27+) |
+**தமிழ்:** StorageClass (எப்படி disk create செய்வது) → PV (உண்மையான disk) → PVC (user-ன் request) → Pod (use செய்கிறது)
 
-### Reclaim Policies
-| Policy | Action when PVC deleted |
-|--------|------------------------|
-| Retain | PV preserved, manual cleanup |
-| Delete | PV and backing storage deleted |
-| Recycle | Deprecated — basic scrub |
+---
 
-### CSI (Container Storage Interface)
-- Standard API for storage vendors
-- Examples: Azure Disk CSI, GCP PD CSI, EBS CSI, NFS CSI
-- Enables snapshots, cloning, expansion
+## 🔑 Volume Types | Volume வகைகள்
 
-## Command Mastery
+| Type | Lifespan | Use case | தமிழ் |
+|------|----------|----------|-------|
+| **emptyDir** | Dies with pod | Temp scratch space | Pod-உடன் அழியும் temp space |
+| **hostPath** | Node-local | Dev only (avoid in prod!) | Node-ல் உள்ள path (production-ல் avoid) |
+| **PVC** | Survives pod restarts | Databases, artifacts | Pod restart ஆனாலும் data remain |
+| **configMap** | Config as files | App configuration | Config-ஐ file-ஆக mount |
+| **secret** | Secrets as files | Passwords, keys | Secrets-ஐ file-ஆக mount |
+
+## Access Modes | Access Modes
+
+| Mode | Short | Meaning | தமிழ் |
+|------|-------|---------|-------|
+| ReadWriteOnce | RWO | One node reads/writes | ஒரு node மட்டும் read/write |
+| ReadOnlyMany | ROX | Many nodes read | பல nodes read மட்டும் |
+| ReadWriteMany | RWX | Many nodes read/write | பல nodes read/write |
+
+> 💡 **தமிழ்:** RWO = ஒரு நபர் மட்டும் notebook-ல் எழுதலாம். RWX = எல்லோரும் எழுதலாம். ROX = எல்லோரும் படிக்கலாம், யாரும் எழுத முடியாது.
+
+---
+
+## 🛠️ Commands | Commands
 
 ```bash
-# Storage classes available
+# --- Storage classes available ---
 kubectl get storageclass
-kubectl describe storageclass standard
 
-# Create a PVC (dynamic provisioning)
+# --- PVC create (dynamic provisioning) ---
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: build-cache
+  name: my-data
 spec:
-  accessModes:
-  - ReadWriteOnce
+  accessModes: [ReadWriteOnce]
   resources:
     requests:
       storage: 10Gi
   storageClassName: standard
 EOF
 
-# Check PVC and bound PV
-kubectl get pvc
-kubectl get pv
-kubectl describe pvc build-cache
-
-# Pod using PVC
+# --- Pod using PVC ---
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
-  name: build-agent
+  name: app
 spec:
   containers:
-  - name: builder
-    image: alpine
-    command: ['sh', '-c', 'echo "cached data" > /cache/data && sleep 3600']
+  - name: app
+    image: nginx
     volumeMounts:
-    - name: cache-vol
-      mountPath: /cache
+    - name: data
+      mountPath: /data       # Pod-க்குள் /data-ல் mount ஆகும்
   volumes:
-  - name: cache-vol
+  - name: data
     persistentVolumeClaim:
-      claimName: build-cache
+      claimName: my-data     # மேலே create செய்த PVC
 EOF
 
-# emptyDir (shared between containers in a pod)
+# --- Check status ---
+kubectl get pvc              # Bound ஆனதா?
+kubectl get pv               # PV auto-created ஆனதா?
+
+# --- emptyDir (temp shared storage) ---
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
-  name: shared-vol
+  name: shared
 spec:
   containers:
   - name: writer
     image: busybox
     command: ['sh', '-c', 'echo hello > /shared/data && sleep 3600']
-    volumeMounts:
-    - name: shared
-      mountPath: /shared
+    volumeMounts: [{name: tmp, mountPath: /shared}]
   - name: reader
     image: busybox
     command: ['sh', '-c', 'cat /shared/data && sleep 3600']
-    volumeMounts:
-    - name: shared
-      mountPath: /shared
+    volumeMounts: [{name: tmp, mountPath: /shared}]
   volumes:
-  - name: shared
-    emptyDir: {}
+  - name: tmp
+    emptyDir: {}          # Pod-உடன் அழியும்
 EOF
 
-# Volume expansion (if storageclass allows)
-kubectl patch pvc build-cache -p '{"spec":{"resources":{"requests":{"storage":"20Gi"}}}}'
-
-# Static PV creation
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: nfs-artifacts
-spec:
-  capacity:
-    storage: 100Gi
-  accessModes:
-  - ReadWriteMany
-  nfs:
-    server: nfs.internal
-    path: /exports/artifacts
-  persistentVolumeReclaimPolicy: Retain
-EOF
-
-# Snapshots (CSI)
-cat <<EOF | kubectl apply -f -
-apiVersion: snapshot.storage.k8s.io/v1
-kind: VolumeSnapshot
-metadata:
-  name: cache-snapshot
-spec:
-  volumeSnapshotClassName: csi-snapclass
-  source:
-    persistentVolumeClaimName: build-cache
-EOF
+# --- Expand PVC ---
+kubectl patch pvc my-data -p '{"spec":{"resources":{"requests":{"storage":"20Gi"}}}}'
 ```
 
-## Practical Lab
+---
 
-### Exercises
-1. Create a StorageClass, PVC, and Pod — verify data persists across pod restarts
-2. Create a pod with emptyDir and demonstrate data sharing between sidecar containers
-3. Test what happens when a PVC is deleted with `Retain` vs `Delete` reclaim policy
-4. Create an NFS-backed PV with ReadWriteMany and mount it from multiple pods
-5. Expand a PVC online and verify the filesystem grows
-6. Design a storage strategy for CI build caches (fast ephemeral) vs artifact storage (durable)
+## 📋 Cheat Sheet | விரைவு குறிப்பு
 
-### Pass Criteria
-- You can explain the PV lifecycle (Available → Bound → Released → Retained/Deleted)
-- You understand dynamic vs static provisioning
-- You can choose the right access mode for each workload type
-- You know when to use emptyDir vs PVC vs hostPath
+```
+┌──────────────────────────────────────────────┐
+│           STORAGE CHEAT SHEET                │
+├──────────────────────────────────────────────┤
+│ StorageClass → PV → PVC → Pod               │
+│ (template)  (disk) (request) (uses it)       │
+│                                              │
+│ ACCESS MODES:                                │
+│   RWO = 1 node write    (most common)        │
+│   RWX = many nodes write (NFS, shared)       │
+│   ROX = many nodes read  (configs)           │
+│                                              │
+│ RECLAIM POLICY (PVC delete ஆனால்):            │
+│   Delete = PV-யும் disk-யும் delete           │
+│   Retain = PV remain, manual cleanup         │
+│                                              │
+│ emptyDir = temp (pod-உடன் அழியும்)            │
+│ hostPath = avoid in production!              │
+│ PVC      = permanent (production use)        │
+└──────────────────────────────────────────────┘
+```
 
-## Mock Interview Questions
+---
 
-1. **Explain the relationship between StorageClass, PV, and PVC.**
-2. **A pod is stuck in Pending because of storage. How do you debug?**
-3. **How would you design shared storage for CI build caches across multiple build pods?**
-4. **What's the difference between RWO and RWX? When does this matter in CI/CD?**
-5. **How do CSI drivers work? How would you evaluate one for production?**
-6. **Explain volume snapshots and how you'd use them for build artifact backup.**
-7. **What are the security implications of hostPath volumes?**
+## 🎤 Interview Q&A | நேர்முகத் தேர்வு
+
+**Q: Pod Pending due to storage — how to debug?**
+- `kubectl describe pvc` → event "waiting for volume" இருக்கா?
+- StorageClass exist ஆகிறதா? `kubectl get sc`
+- Cloud quota exceeded ஆ?
+
+**Q: RWO vs RWX — when does it matter?**
+- RWO: single pod database (PostgreSQL). RWX: shared build cache across multiple CI pods.
+
+**Q: hostPath ஏன் production-ல் avoid?**
+- Pod reschedule ஆனால் data lost. Security risk (node filesystem access). No portability.
+
+---
+
+## ✅ Self-Check | சுய மதிப்பீடு
+
+- [ ] StorageClass → PV → PVC → Pod flow explain செய்ய முடியும்
+- [ ] Access modes differentiate செய்ய முடியும்
+- [ ] PVC create/mount செய்ய முடியும்
+- [ ] Storage issues debug செய்ய முடியும்

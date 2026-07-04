@@ -1,189 +1,136 @@
-# Module 08: Helm Charts & Package Management
+# Module 08: Helm
+# மாடுல் 08: Helm (Package Manager)
 
-## Why this matters for your profile
-You build reusable deployment patterns across SoC programs. Helm is the standard package manager — you use it for deploying Jenkins, monitoring stacks, Gerrit, and custom CI/CT applications on AKS/GKE/Talos/OKD.
+---
 
-## Concept Clarity
+## 🎯 What? | என்ன?
 
-### Helm Architecture
-| Component | Purpose |
-|-----------|---------|
-| Chart | Package of K8s resource templates |
-| Release | Instance of a chart deployed to a cluster |
-| Repository | HTTP server hosting chart archives |
-| Values | Configuration override for templates |
-| Templates | Go-templated K8s manifests |
+**English:** Helm is the package manager for Kubernetes — like apt/yum for Linux. It packages multiple K8s manifests into a "chart" that you can install, upgrade, and rollback as one unit.
 
-### Chart Structure
-```
-mychart/
-├── Chart.yaml          # Metadata (name, version, dependencies)
-├── values.yaml         # Default configuration
-├── charts/             # Subcharts (dependencies)
-├── templates/          # Go-templated K8s manifests
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   ├── ingress.yaml
-│   ├── _helpers.tpl    # Named template partials
-│   ├── NOTES.txt       # Post-install message
-│   └── tests/
-│       └── test-connection.yaml
-└── .helmignore
-```
+**தமிழ்:** Helm = Kubernetes-க்கான package manager. Linux-ல் apt/yum போல. பல K8s YAML files-ஐ ஒரு "chart"-ஆக pack செய்து, ஒரே command-ல் install/upgrade/rollback செய்யலாம்.
 
-### Helm Lifecycle
-```
-helm install → create → hook(pre-install) → resources → hook(post-install)
-helm upgrade → hook(pre-upgrade) → update resources → hook(post-upgrade)
-helm rollback → revert to previous release revision
-helm uninstall → hook(pre-delete) → delete resources → hook(post-delete)
+### Analogy | உதாரணம்
+> Without Helm = Assembling IKEA furniture without manual (10 YAML files manually)
+> With Helm = "helm install" = one-click setup (chart = instruction manual + all parts)
+
+> Helm இல்லாம = IKEA furniture manual இல்லாம assemble செய்வது
+> Helm-உடன் = ஒரே click-ல் full setup
+
+---
+
+## 📊 Helm Concepts | Helm கருத்துகள்
+
+| Concept | What | தமிழ் | Analogy |
+|---------|------|-------|---------|
+| **Chart** | Package of K8s templates | K8s templates package | Recipe (சமையல் குறிப்பு) |
+| **Release** | Installed instance of chart | Chart install செய்த instance | Cooked dish (சமைத்த உணவு) |
+| **Values** | Config to customize chart | Chart-ஐ customize செய்ய config | Spice level (காரம் அளவு) |
+| **Repository** | Where charts are stored | Charts store ஆகும் இடம் | Cookbook library |
+
+```mermaid
+graph LR
+    REPO[Helm Repo<br/>Chart store] --> CHART[Chart<br/>Package]
+    CHART --> |helm install| REL[Release<br/>Running instance]
+    VALUES[values.yaml<br/>Customization] --> REL
 ```
 
-### Key Features
-- **Values override**: `--set`, `--values`, multi-file merge
-- **Hooks**: pre/post install/upgrade/delete, test
-- **Dependencies**: subchart management via `Chart.yaml`
-- **Library charts**: shared template logic (no resources deployed)
-- **OCI support**: store charts in container registries
+---
 
-## Command Mastery
+## 🛠️ Commands | Commands
 
 ```bash
-# Repository management
+# --- Repository (charts எங்கிருந்து download?) ---
 helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add prometheus https://prometheus-community.github.io/helm-charts
 helm repo update
-helm search repo nginx
-helm search hub prometheus  # Search Artifact Hub
+helm search repo nginx            # Chart search
 
-# Install
+# --- Install (chart-ஐ cluster-ல் deploy) ---
 helm install my-nginx bitnami/nginx -n web --create-namespace
-helm install jenkins jenkins/jenkins -f custom-values.yaml -n ci
+helm install jenkins jenkins/jenkins -f my-values.yaml -n ci
 
-# Show chart info before installing
-helm show values bitnami/nginx | head -50
-helm show chart bitnami/nginx
+# --- Before install, what will happen? ---
+helm show values bitnami/nginx | head -30    # Default values பாரு
+helm template my-release bitnami/nginx       # Rendered YAML பாரு (dry run)
+helm install test bitnami/nginx --dry-run    # Install simulate
 
-# Upgrade
-helm upgrade my-nginx bitnami/nginx --set replicaCount=3 -n web
-helm upgrade jenkins jenkins/jenkins -f prod-values.yaml -n ci
+# --- Upgrade (version/config change) ---
+helm upgrade my-nginx bitnami/nginx --set replicaCount=3
+helm upgrade my-nginx bitnami/nginx -f prod-values.yaml
 
-# Rollback
-helm history my-nginx -n web
-helm rollback my-nginx 1 -n web
+# --- Rollback (problem-னா பழையதுக்கு போ) ---
+helm history my-nginx -n web     # History பாரு
+helm rollback my-nginx 1 -n web  # Revision 1-க்கு rollback
 
-# Dry run and template rendering
-helm install test bitnami/nginx --dry-run --debug
-helm template my-release ./mychart -f values.yaml > rendered.yaml
-
-# Uninstall
+# --- Uninstall ---
 helm uninstall my-nginx -n web
 
-# Create a new chart
-helm create mychart
-helm lint mychart
-helm package mychart
-helm push mychart-0.1.0.tgz oci://registry.example.com/charts
+# --- Create your own chart ---
+helm create mychart              # Skeleton chart create
+helm lint mychart                # Validate
+helm package mychart             # .tgz file create
+helm push mychart-0.1.0.tgz oci://registry.io/charts  # Push to registry
 
-# Dependency management
+# --- Dependency management ---
 helm dependency update ./mychart
-helm dependency build ./mychart
 ```
 
-### Writing Charts — Key Patterns
-```yaml
-# templates/deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ include "mychart.fullname" . }}
-  labels:
-    {{- include "mychart.labels" . | nindent 4 }}
-spec:
-  replicas: {{ .Values.replicaCount }}
-  selector:
-    matchLabels:
-      {{- include "mychart.selectorLabels" . | nindent 6 }}
-  template:
-    metadata:
-      labels:
-        {{- include "mychart.selectorLabels" . | nindent 8 }}
-      annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-    spec:
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      containers:
-      - name: {{ .Chart.Name }}
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-        resources:
-          {{- toYaml .Values.resources | nindent 10 }}
+---
+
+## 📋 Cheat Sheet | விரைவு குறிப்பு
+
+```
+┌────────────────────────────────────────────────────┐
+│              HELM CHEAT SHEET                      │
+├────────────────────────────────────────────────────┤
+│ LIFECYCLE:                                         │
+│   install → upgrade → rollback → uninstall         │
+│                                                    │
+│ KEY COMMANDS:                                      │
+│   helm repo add <name> <url>     # Add repo        │
+│   helm install <release> <chart> # Deploy          │
+│   helm upgrade <release> <chart> # Update          │
+│   helm rollback <release> <rev>  # Rollback!       │
+│   helm uninstall <release>       # Remove          │
+│   helm template <rel> <chart>    # Render only     │
+│                                                    │
+│ CUSTOMIZATION:                                     │
+│   --set key=value               (inline)           │
+│   -f values.yaml                (file)             │
+│   Multiple -f files merge (last wins)              │
+│                                                    │
+│ CHART STRUCTURE:                                   │
+│   Chart.yaml   = metadata                          │
+│   values.yaml  = defaults                          │
+│   templates/   = K8s manifests (Go templates)      │
+│   charts/      = sub-chart dependencies            │
+│                                                    │
+│ HELM vs KUSTOMIZE:                                 │
+│   Helm = templating (Go templates, complex)        │
+│   Kustomize = patching (overlay, simpler)          │
+└────────────────────────────────────────────────────┘
 ```
 
-```yaml
-# values.yaml
-replicaCount: 2
-image:
-  repository: nginx
-  tag: "1.25"
-  pullPolicy: IfNotPresent
-resources:
-  requests:
-    cpu: 250m
-    memory: 256Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
-nodeSelector: {}
-tolerations: []
-affinity: {}
-```
+---
 
-### Helm Testing
-```bash
-# Test hook
-cat <<EOF > templates/tests/test-connection.yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: "{{ include "mychart.fullname" . }}-test"
-  annotations:
-    "helm.sh/hook": test
-spec:
-  containers:
-  - name: wget
-    image: busybox
-    command: ['wget', '--spider', 'http://{{ include "mychart.fullname" . }}:80']
-  restartPolicy: Never
-EOF
+## 🎤 Interview Q&A | நேர்முகத் தேர்வு
 
-helm test my-release -n ci
-```
+**Q: Helm vs Kustomize — when to use which?**
+- **Helm**: Complex apps with many config variations, reusable packages, dependency management
+- **Kustomize**: Simple overlays (dev/staging/prod), no templating needed, built into kubectl
 
-## Practical Lab
+**Q: Helm upgrade failed midway. What's the state?**
+- Release marked as "FAILED". Previous version still running (atomic by default in Helm 3). Fix and `helm upgrade` again or `helm rollback`.
 
-### Exercises
-1. Create a Helm chart for a CI build agent (Deployment + ServiceAccount + RBAC + ConfigMap)
-2. Use `helm template` to render locally, inspect the output, then install
-3. Perform an upgrade with `--set`, check history, then rollback
-4. Add a subchart dependency (e.g., Redis for caching) and manage with `helm dependency`
-5. Implement a pre-upgrade hook that runs a database migration Job
-6. Package and push a chart to an OCI registry (use local registry for testing)
+**Q: How to handle secrets in Helm?**
+- Never put secrets in values.yaml in Git!
+- Options: helm-secrets plugin + SOPS, External Secrets Operator, Vault injection at runtime
 
-### Pass Criteria
-- You can create a production-quality Helm chart from scratch
-- You understand Go template syntax and named templates
-- You can manage release lifecycle (install, upgrade, rollback, uninstall)
-- You know when to use Helm vs Kustomize vs raw manifests
+---
 
-## Mock Interview Questions
+## ✅ Self-Check | சுய மதிப்பீடு
 
-1. **When would you use Helm vs Kustomize? What are the trade-offs?**
-2. **Explain the Helm release lifecycle and what hooks are available.**
-3. **How do you handle secrets in Helm charts? What are the options?**
-4. **A helm upgrade failed midway. What's the state of the release? How do you recover?**
-5. **Design a Helm chart library for your organization's CI/CD platform components.**
-6. **How do you version and distribute internal Helm charts?**
-7. **What's the `checksum/config` annotation pattern and why is it useful?**
+- [ ] Chart/Release/Values explain முடியும்
+- [ ] install/upgrade/rollback செய்ய முடியும்
+- [ ] Own chart create செய்ய முடியும்
+- [ ] Helm vs Kustomize compare செய்ய முடியும்

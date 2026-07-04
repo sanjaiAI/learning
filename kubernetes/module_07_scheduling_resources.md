@@ -1,53 +1,76 @@
-# Module 07: Scheduling, Affinity & Resource Management
+# Module 07: Scheduling & Resource Management
+# மாடுல் 07: Scheduling & Resource Management (திட்டமிடல் & வள மேலாண்மை)
 
-## Why this matters for your profile
-You manage heterogeneous clusters with GPU nodes, high-memory build nodes, and device farm nodes. Proper scheduling and resource governance prevents noisy neighbors and ensures CI/CT workloads get predictable execution.
+---
 
-## Concept Clarity
+## 🎯 What? | என்ன?
 
-### Scheduling Decision Flow
-1. Filtering: eliminate nodes that don't meet requirements (taints, resources, affinity)
-2. Scoring: rank remaining nodes by preference
-3. Binding: assign pod to highest-scoring node
+**English:** Scheduling = how K8s decides WHICH NODE to place a pod on. Resource management = how much CPU/memory each pod gets.
 
-### Resource Requests vs Limits
-| Field | Purpose | Scheduling | Runtime |
-|-------|---------|-----------|---------|
-| requests | Guaranteed minimum | Used by scheduler | QoS classification |
-| limits | Maximum allowed | Not used | Enforced (OOMKilled / throttled) |
+**தமிழ்:** Scheduling = எந்த node-ல் pod வைக்கணும் என்று K8s decide செய்வது. Resource management = ஒவ்வொரு pod-க்கும் எவ்வளவு CPU/memory கொடுப்பது.
 
-### QoS Classes
-| Class | Condition | Eviction Priority |
-|-------|-----------|-------------------|
-| Guaranteed | requests == limits for all containers | Last to be evicted |
-| Burstable | requests < limits | Middle |
-| BestEffort | No requests/limits set | First to be evicted |
+### Analogy | உதாரணம்
+> School classroom: Scheduler = teacher assigning seats. Resources = desk size (some students need bigger desks). Taints = "reserved" signs on seats.
 
-### LimitRange & ResourceQuota
-| Resource | Scope | Purpose |
-|----------|-------|---------|
-| LimitRange | Namespace | Default/min/max per pod/container |
-| ResourceQuota | Namespace | Total resource cap for namespace |
+> School: Scheduler = teacher seats assign செய்வது. Resources = desk size. Taints = "reserved" sign.
 
-### Scheduling Constraints
-| Mechanism | Purpose |
-|-----------|---------|
-| nodeSelector | Simple label matching |
-| nodeAffinity | Expressive node selection (required/preferred) |
-| podAffinity | Co-locate with other pods |
-| podAntiAffinity | Spread away from other pods |
-| Taints & Tolerations | Nodes repel pods unless tolerated |
-| Topology Spread | Even distribution across zones/nodes |
-| Priority & Preemption | Critical workloads evict lower-priority ones |
+---
 
-### Taints & Tolerations
-- Taint on node: `key=value:effect` (NoSchedule, PreferNoSchedule, NoExecute)
-- Toleration on pod: allows scheduling despite taint
+## 📊 Scheduling Flow | Scheduling செயல்முறை
 
-## Command Mastery
+```mermaid
+graph LR
+    NEW[New Pod<br/>புது Pod] --> FILTER[Filter<br/>தகுதி இல்லாத nodes நீக்கு]
+    FILTER --> SCORE[Score<br/>மீதமுள்ள nodes-க்கு score கொடு]
+    SCORE --> BIND[Bind<br/>Best node-க்கு assign செய்]
+```
+
+1. **Filter** = Remove nodes that CAN'T run this pod (not enough CPU, wrong taint, etc.)
+2. **Score** = Rank remaining nodes (prefer less loaded, correct zone, etc.)
+3. **Bind** = Assign pod to highest-scoring node
+
+---
+
+## 💰 Resources: Requests vs Limits
+
+| | Requests | Limits |
+|--|----------|--------|
+| **Meaning** | "I need at least this much" | "Don't give me more than this" |
+| **தமிழ்** | "குறைந்தது இவ்வளவு வேண்டும்" | "இதைவிட அதிகம் வேண்டாம்" |
+| **Scheduler uses?** | ✅ Yes (for placement) | ❌ No |
+| **Enforced at runtime?** | No (minimum guarantee) | ✅ Yes (killed/throttled) |
+| **CPU exceed** | OK (throttled) | Throttled |
+| **Memory exceed** | OK (if available) | **OOMKilled!** ☠️ |
+
+### QoS Classes | தரம்
+
+| Class | Condition | Eviction Priority | தமிழ் |
+|-------|-----------|-------------------|-------|
+| **Guaranteed** | requests = limits | Last evicted | கடைசியாக evict ஆகும் (best) |
+| **Burstable** | requests < limits | Middle | நடுவில் |
+| **BestEffort** | No requests/limits | First evicted! | முதலில் evict ஆகும் (worst) |
+
+> 💡 **தமிழ்:** Bus-ல் reserved seat (Guaranteed), general seat (Burstable), standing (BestEffort). Bus நிறைந்தால் standing-ல் இருப்பவர்கள் முதலில் இறக்கப்படுவார்கள்!
+
+---
+
+## 🎯 Scheduling Controls | Scheduling கட்டுப்பாடுகள்
+
+| Mechanism | Purpose | தமிழ் | Analogy |
+|-----------|---------|-------|---------|
+| **nodeSelector** | Simple label match | Label match செய் | "Only seat in row A" |
+| **nodeAffinity** | Complex rules | விரிவான rules | "Prefer row A, but B is OK" |
+| **podAntiAffinity** | Spread pods apart | Pods-ஐ பரப்பு | "Don't sit next to each other" |
+| **Taints/Tolerations** | Node repels pods | Node pods-ஐ தள்ளுகிறது | "Reserved seat" sign |
+| **ResourceQuota** | Namespace total cap | Namespace-க்கு total limit | Department budget |
+| **LimitRange** | Per-pod defaults | Pod-க்கு default limits | Individual expense limit |
+
+---
+
+## 🛠️ Commands | Commands
 
 ```bash
-# Resource requests and limits
+# --- Resource requests/limits ---
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
@@ -60,212 +83,161 @@ spec:
     command: ['sleep', '3600']
     resources:
       requests:
-        cpu: "2"
-        memory: "4Gi"
+        cpu: "2"           # 2 CPU cores guarantee
+        memory: "4Gi"      # 4GB memory guarantee
       limits:
-        cpu: "4"
-        memory: "8Gi"
+        cpu: "4"           # Max 4 cores
+        memory: "8Gi"      # Max 8GB (exceed = OOMKill!)
 EOF
 
-# Check QoS class
+# QoS class check
 kubectl get pod build-agent -o jsonpath='{.status.qosClass}'
 
-# LimitRange
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: LimitRange
-metadata:
-  name: ci-limits
-  namespace: ci
-spec:
-  limits:
-  - type: Container
-    default:
-      cpu: "1"
-      memory: "1Gi"
-    defaultRequest:
-      cpu: "500m"
-      memory: "512Mi"
-    max:
-      cpu: "8"
-      memory: "16Gi"
-    min:
-      cpu: "100m"
-      memory: "128Mi"
-  - type: Pod
-    max:
-      cpu: "16"
-      memory: "32Gi"
-EOF
-
-# ResourceQuota
+# --- ResourceQuota (namespace budget) ---
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: ResourceQuota
 metadata:
-  name: ci-quota
+  name: team-quota
   namespace: ci
 spec:
   hard:
-    requests.cpu: "32"
-    requests.memory: "64Gi"
-    limits.cpu: "64"
-    limits.memory: "128Gi"
-    pods: "50"
-    persistentvolumeclaims: "20"
+    requests.cpu: "32"       # Team-க்கு total 32 CPU
+    requests.memory: "64Gi"  # Total 64GB
+    pods: "50"               # Max 50 pods
 EOF
 
-kubectl describe resourcequota ci-quota -n ci
+# --- LimitRange (per-pod defaults) ---
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+  namespace: ci
+spec:
+  limits:
+  - type: Container
+    default:          # Limit not specified-னா இது apply ஆகும்
+      cpu: "1"
+      memory: "1Gi"
+    defaultRequest:   # Request not specified-னா இது apply ஆகும்
+      cpu: "500m"
+      memory: "512Mi"
+EOF
 
-# Taints and Tolerations
+# --- Taints & Tolerations ---
+# Node-ஐ "build-only" ஆக mark செய்
 kubectl taint nodes worker-1 dedicated=build:NoSchedule
-kubectl taint nodes worker-2 dedicated=gpu:NoSchedule
 
-# Pod with toleration
+# Pod-ல் toleration கொடு (இந்த pod மட்டும் schedule ஆகும்)
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
-  name: gpu-pod
+  name: build-pod
 spec:
   tolerations:
   - key: "dedicated"
-    operator: "Equal"
-    value: "gpu"
+    value: "build"
     effect: "NoSchedule"
   nodeSelector:
-    accelerator: nvidia-a100
+    node-type: build
   containers:
-  - name: train
-    image: nvidia/cuda:12.0-runtime-ubuntu22.04
-    resources:
-      limits:
-        nvidia.com/gpu: 1
+  - name: build
+    image: alpine
 EOF
 
-# Node Affinity
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
-metadata:
-  name: affinity-demo
-spec:
-  affinity:
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: node-type
-            operator: In
-            values: ["build", "general"]
-      preferredDuringSchedulingIgnoredDuringExecution:
-      - weight: 80
-        preference:
-          matchExpressions:
-          - key: zone
-            operator: In
-            values: ["us-central1-a"]
-  containers:
-  - name: app
-    image: nginx
-EOF
-
-# Pod Anti-Affinity (spread replicas)
+# --- Pod Anti-Affinity (spread replicas) ---
 cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: web-spread
+  name: web
 spec:
   replicas: 3
   selector:
-    matchLabels:
-      app: web-spread
+    matchLabels: {app: web}
   template:
     metadata:
-      labels:
-        app: web-spread
+      labels: {app: web}
     spec:
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
           - labelSelector:
-              matchLabels:
-                app: web-spread
-            topologyKey: kubernetes.io/hostname
+              matchLabels: {app: web}
+            topologyKey: kubernetes.io/hostname   # ஒவ்வொரு node-லும் 1 pod
       containers:
       - name: web
         image: nginx
 EOF
 
-# Topology Spread Constraints
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
-metadata:
-  name: spread-demo
-  labels:
-    app: spread
-spec:
-  topologySpreadConstraints:
-  - maxSkew: 1
-    topologyKey: topology.kubernetes.io/zone
-    whenUnsatisfiable: DoNotSchedule
-    labelSelector:
-      matchLabels:
-        app: spread
-  containers:
-  - name: app
-    image: nginx
-EOF
-
-# Priority Classes
-cat <<EOF | kubectl apply -f -
-apiVersion: scheduling.k8s.io/v1
-kind: PriorityClass
-metadata:
-  name: critical-ci
-value: 1000000
-globalDefault: false
-description: "Critical CI pipeline workloads"
----
-apiVersion: scheduling.k8s.io/v1
-kind: PriorityClass
-metadata:
-  name: batch-low
-value: 100
-description: "Low priority batch jobs"
-EOF
-
-# Check scheduling issues
+# --- Debug scheduling ---
 kubectl describe pod <pending-pod> | grep -A 10 Events
-kubectl get nodes -o custom-columns=NAME:.metadata.name,CPU:.status.allocatable.cpu,MEM:.status.allocatable.memory
-kubectl top nodes
-kubectl top pods -n ci
+kubectl top nodes       # Node resource usage
+kubectl top pods -n ci  # Pod resource usage
 ```
 
-## Practical Lab
+---
 
-### Exercises
-1. Create a namespace with ResourceQuota (20 CPU, 40Gi RAM) and LimitRange — deploy until quota is exceeded
-2. Taint a node for "build-only" workloads — verify only tolerated pods schedule there
-3. Implement pod anti-affinity to spread Jenkins agents across nodes
-4. Create two PriorityClasses — demonstrate preemption when resources are scarce
-5. Use topology spread constraints to distribute pods across availability zones
-6. Simulate OOMKilled by setting a 64Mi limit and allocating 128Mi in the container
+## 📋 Cheat Sheet | விரைவு குறிப்பு
 
-### Pass Criteria
-- You can explain the scheduling flow end-to-end
-- You understand QoS classes and eviction order
-- You can design resource governance for a multi-team platform
-- You know when to use each scheduling primitive
+```
+┌────────────────────────────────────────────────────┐
+│       SCHEDULING & RESOURCES CHEAT SHEET           │
+├────────────────────────────────────────────────────┤
+│ REQUESTS vs LIMITS:                                │
+│   Request = minimum guarantee (scheduling)         │
+│   Limit   = maximum allowed (runtime enforce)      │
+│   CPU exceed limit    → throttled (slow)           │
+│   Memory exceed limit → OOMKilled! ☠️              │
+│                                                    │
+│ QoS: Guaranteed > Burstable > BestEffort           │
+│       (last evict)  (middle)  (first evict)        │
+│                                                    │
+│ SCHEDULING:                                        │
+│   Taint on node   = "keep out" sign               │
+│   Toleration on pod = "I can enter anyway"         │
+│   nodeSelector    = simple label match             │
+│   Affinity        = complex preference rules       │
+│   Anti-affinity   = spread pods across nodes       │
+│                                                    │
+│ GOVERNANCE:                                        │
+│   ResourceQuota = total namespace budget           │
+│   LimitRange    = per-pod defaults/limits          │
+│                                                    │
+│ DEBUG PENDING:                                     │
+│   kubectl describe pod → Events                    │
+│   Common: Insufficient cpu/memory, taint           │
+└────────────────────────────────────────────────────┘
+```
 
-## Mock Interview Questions
+---
 
-1. **A pod is stuck in Pending. Walk me through your debugging process.**
-2. **Design resource governance for a shared Kubernetes cluster with 5 teams running CI/CD workloads.**
-3. **Explain the difference between requests and limits. What happens when a container exceeds each?**
-4. **How would you ensure critical pipeline pods are never evicted in favor of batch jobs?**
-5. **When would you use pod anti-affinity vs topology spread constraints?**
-6. **A team complains their builds are slow. You suspect CPU throttling. How do you investigate?**
-7. **How do taints/tolerations work on Talos clusters where you can't SSH into nodes?**
+## 🎤 Interview Q&A | நேர்முகத் தேர்வு
+
+**Q: Pod is Pending. Debug?**
+1. `kubectl describe pod` → Events → "Insufficient cpu" or "didn't match taint"
+2. `kubectl top nodes` → nodes-ல் resource இருக்கா?
+3. Taint/toleration mismatch-ஆ?
+4. ResourceQuota exceeded-ஆ?
+
+**Q: Requests vs Limits difference? OOM scenario?**
+- Request = scheduling guarantee. Limit = runtime maximum.
+- Memory exceed limit → OOMKilled (container killed, restarts).
+- CPU exceed limit → throttled (slow, not killed).
+
+**Q: Design resource governance for 5 teams?**
+- Namespace per team + ResourceQuota + LimitRange
+- Priority classes (critical-ci > batch-low)
+- Cluster autoscaler for elastic capacity
+
+---
+
+## ✅ Self-Check | சுய மதிப்பீடு
+
+- [ ] Requests vs Limits explain முடியும் + OOM scenario
+- [ ] QoS classes & eviction order சொல்ல முடியும்
+- [ ] Taints/Tolerations write செய்ய முடியும்
+- [ ] ResourceQuota + LimitRange design முடியும்
+- [ ] Pending pod debug முடியும்

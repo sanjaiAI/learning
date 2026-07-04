@@ -1,116 +1,120 @@
 # Module 14: Troubleshooting & Disaster Recovery
+# மாடுல் 14: Troubleshooting & Disaster Recovery
 
-## Why this matters for your profile
-As a Technical Architect, you're the escalation point when things break. You need systematic debugging skills and DR strategies for production Kubernetes clusters — whether GKE, AKS, Talos, or OKD.
+---
 
-## Concept Clarity
+## 🎯 What? | என்ன?
 
-### Troubleshooting Framework
+**English:** Systematic debugging of K8s failures + backup/restore strategies to recover from disasters (etcd corruption, cluster loss, accidental deletion).
+
+**தமிழ்:** K8s failures-ஐ systematic-ஆக debug செய்வது + disaster recovery strategies (etcd corruption, cluster loss, accidental deletion).
+
+### Analogy | உதாரணம்
+> Doctor diagnosing patient: Check vitals (node status) → symptoms (pod events) → tests (logs) → treatment (fix). Backup = health insurance (hope you never need it, but essential).
+
+> Doctor: Vitals check (node status) → symptoms (pod events) → tests (logs) → treatment (fix). Backup = insurance.
+
+---
+
+## 📊 Troubleshooting Flow | Debug Flow
+
+```mermaid
+graph TD
+    ISSUE[Issue Reported] --> NODE{Node healthy?}
+    NODE -->|No| NODE_FIX[Check kubelet, disk, memory]
+    NODE -->|Yes| POD{Pod running?}
+    POD -->|Pending| SCHED[Scheduling issue<br/>Resources? Taints? PVC?]
+    POD -->|CrashLoop| LOGS[Check logs<br/>kubectl logs --previous]
+    POD -->|ImagePull| IMAGE[Registry auth? Image exists?]
+    POD -->|Running but broken| NET[Network/Service issue<br/>DNS? Endpoints?]
+    NET --> VERIFY[Test connectivity<br/>kubectl exec curl]
 ```
-1. Identify symptoms (what's broken?)
-2. Gather data (events, logs, metrics, describe)
-3. Isolate scope (cluster/node/namespace/pod/container)
-4. Form hypothesis
-5. Test and validate
-6. Fix and document
-```
 
-### Common Failure Modes
-| Symptom | Likely Cause |
-|---------|-------------|
-| Pod Pending | Insufficient resources, taints, affinity mismatch |
-| CrashLoopBackOff | App crash, bad config, missing deps |
-| ImagePullBackOff | Bad image name, auth failure, registry down |
-| OOMKilled | Memory limit too low |
-| Evicted | Node under pressure (disk/memory) |
-| Node NotReady | Kubelet crash, network partition, disk full |
-| Service unreachable | Endpoints empty, NetworkPolicy, DNS issue |
-| Ingress 503 | No healthy backends, misconfigured path |
+---
 
-### Disaster Recovery Components
-| Component | Backup Strategy |
-|-----------|----------------|
-| etcd | Snapshot backup (critical) |
-| PersistentVolumes | CSI snapshots, Velero |
-| Cluster state | GitOps (everything in Git) |
-| Secrets | External secrets store (Vault) |
-| Certificates | Cert-manager, manual backup of CA |
+## 🛠️ Troubleshooting Commands | Debug Commands
 
-### Velero (Backup & Restore)
-- Backs up K8s resources + PV data
-- Supports scheduled backups
-- Cross-cluster migration
-- Selective restore (namespace, label)
-
-## Command Mastery
-
-### Systematic Debugging
+### Pod Issues
 
 ```bash
-# Cluster-level health
-kubectl get nodes -o wide
-kubectl top nodes
-kubectl get componentstatuses  # deprecated but informative
-kubectl get events --all-namespaces --sort-by=.metadata.creationTimestamp | tail -30
+# Pod stuck Pending — ஏன் schedule ஆகல?
+kubectl describe pod <pod> | grep -A 10 Events
+# Common: Insufficient cpu/memory, no matching node (taints), PVC not bound
 
-# Node issues
-kubectl describe node <node-name> | grep -A 5 Conditions
-kubectl describe node <node-name> | grep -A 10 "Allocated resources"
-# Talos: no SSH — use talosctl
-# talosctl dmesg --nodes <ip>
-# talosctl services --nodes <ip>
-# talosctl logs kubelet --nodes <ip>
+# CrashLoopBackOff — App crash ஆகிறது
+kubectl logs <pod> --previous          # Previous crash logs
+kubectl logs <pod> -c <init-container> # Init container logs
 
-# Pod debugging
-kubectl get pods -n <ns> -o wide
-kubectl describe pod <name> -n <ns>
-kubectl logs <pod> -n <ns> --previous  # Previous crashed container
-kubectl logs <pod> -c <container> -n <ns>
-kubectl get events --field-selector involvedObject.name=<pod> -n <ns>
+# Debug with ephemeral container (production-safe!)
+kubectl debug -it <pod> --image=busybox --target=<container>
+# OR create debug copy
+kubectl debug <pod> --copy-to=debug-pod --container=debug -- sh
 
-# Why is a pod Pending?
-kubectl describe pod <name> | grep -A 5 "Events"
-# Look for: FailedScheduling, Insufficient cpu/memory, node selector mismatch
-
-# CrashLoopBackOff debugging
-kubectl logs <pod> --previous
-kubectl describe pod <pod> | grep -A 5 "Last State"
-kubectl get pod <pod> -o jsonpath='{.status.containerStatuses[0].lastState.terminated.reason}'
-
-# Exec into running container
-kubectl exec -it <pod> -c <container> -- /bin/sh
-
-# Debug with ephemeral container (K8s 1.25+)
-kubectl debug <pod> -it --image=busybox --target=<container>
-
-# Debug node (create privileged pod on node)
-kubectl debug node/<node-name> -it --image=ubuntu
-
-# Network debugging
-kubectl run netshoot --rm -it --image=nicolaka/netshoot -- /bin/bash
-# Inside: curl, dig, nslookup, tcpdump, iperf, nmap
-
-# DNS debugging
-kubectl exec dnsutils -- nslookup kubernetes.default
-kubectl exec dnsutils -- cat /etc/resolv.conf
-
-# Service/Endpoint verification
-kubectl get endpoints <service>
-kubectl describe svc <service>
-
-# Certificate issues
-kubectl get csr
-openssl s_client -connect <service-ip>:443 -servername <hostname>
-
-# Resource pressure
-kubectl top pods --sort-by=memory -n <ns>
-kubectl get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.qosClass}{"\n"}{end}'
+# OOMKilled — Memory limit reached
+kubectl describe pod <pod> | grep -i oom
+kubectl top pod <pod> --containers     # Current memory usage
 ```
+
+### Node Issues
+
+```bash
+# Node NotReady
+kubectl describe node <node> | grep -A 5 Conditions
+# Check: MemoryPressure, DiskPressure, PIDPressure
+
+# SSH (normal clusters) — Talos-ல் SSH இல்லை!
+ssh node01 "journalctl -u kubelet --since '5 min ago'"
+
+# Talos-specific debugging (no SSH!)
+talosctl dmesg --nodes <node>
+talosctl logs kubelet --nodes <node>
+talosctl service kubelet status --nodes <node>
+talosctl get members                    # Cluster membership
+talosctl health                         # Full cluster health check
+```
+
+### Network Issues
+
+```bash
+# Service has no endpoints?
+kubectl get endpoints <service>
+# Empty = selector doesn't match pod labels!
+
+# DNS working?
+kubectl run dnstest --image=busybox --rm -it -- nslookup my-service.my-ns.svc.cluster.local
+
+# Pod-to-pod connectivity
+kubectl exec <pod-a> -- curl -v http://<pod-b-ip>:8080
+
+# CoreDNS issues
+kubectl logs -n kube-system -l k8s-app=kube-dns
+kubectl get configmap coredns -n kube-system -o yaml
+```
+
+### etcd Issues
+
+```bash
+# etcd cluster health
+kubectl exec -n kube-system etcd-master -- etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/server.crt \
+  --key=/etc/kubernetes/pki/etcd/server.key \
+  endpoint health
+
+# etcd performance
+kubectl exec -n kube-system etcd-master -- etcdctl \
+  endpoint status --write-out=table
+```
+
+---
+
+## 🛠️ Disaster Recovery | DR Commands
 
 ### etcd Backup & Restore
 
 ```bash
-# Backup (kubeadm clusters)
+# --- BACKUP (daily cronjob recommended!) ---
 ETCDCTL_API=3 etcdctl snapshot save /backup/etcd-$(date +%Y%m%d).db \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
@@ -118,94 +122,129 @@ ETCDCTL_API=3 etcdctl snapshot save /backup/etcd-$(date +%Y%m%d).db \
   --key=/etc/kubernetes/pki/etcd/server.key
 
 # Verify backup
-ETCDCTL_API=3 etcdctl snapshot status /backup/etcd-$(date +%Y%m%d).db --write-table
+etcdctl snapshot status /backup/etcd-20240101.db --write-out=table
+
+# --- RESTORE ---
+# 1. Stop kube-apiserver (move static pod manifest)
+mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/
+
+# 2. Restore snapshot
+etcdctl snapshot restore /backup/etcd-20240101.db \
+  --data-dir=/var/lib/etcd-restored
+
+# 3. Update etcd manifest to use new data-dir
+# 4. Move apiserver manifest back
+mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/
+```
+
+### Velero (Full cluster backup)
+
+```bash
+# Install
+velero install --provider aws --bucket my-backups \
+  --secret-file ./credentials --plugins velero/velero-plugin-for-aws:v1.8.0
+
+# Backup entire namespace
+velero backup create prod-backup --include-namespaces=production
+
+# Backup with schedule (daily)
+velero schedule create daily-backup --schedule="0 2 * * *" \
+  --include-namespaces=production,staging \
+  --ttl 720h    # Keep 30 days
 
 # Restore
-ETCDCTL_API=3 etcdctl snapshot restore /backup/etcd-20240101.db \
-  --data-dir=/var/lib/etcd-restored \
-  --initial-cluster=master=https://master:2380
+velero restore create --from-backup prod-backup
 
+# Restore specific resources only
+velero restore create --from-backup prod-backup \
+  --include-resources=deployments,services,configmaps
+
+# Check backups
+velero backup get
+velero backup describe prod-backup --details
+```
+
+### Talos DR (no SSH — talosctl only!)
+
+```bash
 # Talos etcd backup
-# talosctl etcd snapshot /backup/etcd.snapshot --nodes <control-plane-ip>
+talosctl etcd snapshot /backup/talos-etcd.db --nodes <control-plane>
+
+# Talos etcd restore (disaster scenario)
+talosctl bootstrap --recover-from=/backup/talos-etcd.db --nodes <control-plane>
+
+# Talos node reset (full wipe and rejoin)
+talosctl reset --nodes <node> --graceful
+
+# Talos upgrade (rolling — no downtime)
+talosctl upgrade --nodes <node> --image ghcr.io/siderolabs/installer:v1.6.0
 ```
 
-### Velero (Cluster Backup)
+---
 
-```bash
-# Install Velero
-velero install \
-  --provider gcp \
-  --bucket my-backup-bucket \
-  --secret-file ./credentials-velero
+## 📋 Cheat Sheet | விரைவு குறிப்பு
 
-# Backup namespace
-velero backup create ci-backup --include-namespaces ci
-velero backup describe ci-backup
-velero backup logs ci-backup
-
-# Scheduled backup
-velero schedule create daily-backup \
-  --schedule="0 2 * * *" \
-  --include-namespaces ci,monitoring \
-  --ttl 720h
-
-# Restore
-velero restore create --from-backup ci-backup
-velero restore create --from-backup ci-backup --include-resources pods,deployments
-
-# Cross-cluster migration
-# 1. Backup on source cluster
-# 2. Configure Velero on target with same storage
-# 3. Restore on target cluster
+```
+┌──────────────────────────────────────────────────┐
+│    TROUBLESHOOTING & DR CHEAT SHEET              │
+├──────────────────────────────────────────────────┤
+│ SYSTEMATIC DEBUG:                                │
+│   1. kubectl get events --sort-by=.lastTimestamp │
+│   2. kubectl describe <resource>                 │
+│   3. kubectl logs (--previous for crashes)       │
+│   4. kubectl debug (ephemeral container)         │
+│   5. kubectl top (resource usage)                │
+│                                                  │
+│ COMMON POD STATES:                               │
+│   Pending    = scheduling issue                  │
+│   CrashLoop  = app error (check logs)            │
+│   ImagePull  = registry/auth issue               │
+│   OOMKilled  = need more memory limit            │
+│   Evicted    = node disk/memory pressure         │
+│                                                  │
+│ BACKUP STRATEGY:                                 │
+│   etcd snapshot = cluster state (CRDs, secrets)  │
+│   Velero = namespaced resources + PVs            │
+│   GitOps = manifests always in Git               │
+│   Combined = etcd + Velero + Git                 │
+│                                                  │
+│ TALOS SPECIFIC:                                  │
+│   No SSH! Use talosctl only                      │
+│   talosctl dmesg / logs / service               │
+│   talosctl etcd snapshot (backup)               │
+│   talosctl health (cluster check)               │
+└──────────────────────────────────────────────────┘
 ```
 
-### Common Recovery Procedures
+---
 
-```bash
-# Node NotReady — cordon and drain
-kubectl cordon <node>
-kubectl drain <node> --ignore-daemonsets --delete-emptydir-data
-# Fix node, then:
-kubectl uncordon <node>
+## 🎤 Interview Q&A | நேர்முகத் தேர்வு
 
-# Force delete stuck pod
-kubectl delete pod <name> --grace-period=0 --force
+**Q: Pod in CrashLoopBackOff — how to debug?**
+1. `kubectl logs <pod> --previous` — crash-க்கு முன் logs
+2. `kubectl describe pod` — events check
+3. `kubectl debug` — ephemeral container attach
+4. Common causes: config error, missing secret/configmap, port conflict, OOM
 
-# Stuck namespace (finalizer issue)
-kubectl get namespace <ns> -o json | jq '.spec.finalizers = []' | kubectl replace --raw "/api/v1/namespaces/<ns>/finalize" -f -
+**Q: How do you backup a K8s cluster?**
+- etcd snapshot (cluster state — all objects)
+- Velero (namespace-level, includes PVs)
+- GitOps ensures manifests always recoverable from Git
+- Combined strategy: etcd daily + Velero hourly + Git always
 
-# Certificate renewal (kubeadm)
-kubeadm certs check-expiration
-kubeadm certs renew all
-# Restart control plane components
+**Q: Talos Linux — how to troubleshoot without SSH?**
+- `talosctl dmesg` — kernel messages
+- `talosctl logs <service>` — service logs
+- `talosctl health` — full health check
+- `talosctl get members` — cluster membership
+- No SSH by design = smaller attack surface
 
-# Recover from bad Deployment rollout
-kubectl rollout undo deployment/<name>
-kubectl rollout status deployment/<name>
-```
+---
 
-## Practical Lab
+## ✅ Self-Check | சுய மதிப்பீடு
 
-### Exercises
-1. Intentionally break a pod (bad image, OOM, missing configmap) and debug systematically
-2. Create a node pressure scenario (fill disk) and observe eviction behavior
-3. Backup etcd, delete a deployment, then restore from backup
-4. Install Velero and perform a namespace backup + cross-namespace restore
-5. Simulate network partition — kill CoreDNS and debug the symptoms
-6. Practice using `kubectl debug` with ephemeral containers
-
-### Pass Criteria
-- You can systematically debug any pod/node/cluster issue
-- You can perform etcd backup and restore
-- You understand the DR strategy: GitOps + etcd backup + Velero + external secrets
-- You can handle production incidents under pressure
-
-## Mock Interview Questions
-
-1. **A production pod is in CrashLoopBackOff at 3 AM. Walk me through your incident response.**
-2. **Your etcd cluster lost quorum. What's the recovery procedure?**
-3. **Design a disaster recovery strategy for a Kubernetes-based CI/CD platform.**
-4. **A node is showing DiskPressure. What happens to pods? How do you fix it?**
-5. **How do you debug networking issues when pods can't communicate?**
-6. **What's your backup strategy for Kubernetes? What do you back up and how often?**
-7. **On Talos (no SSH), how do you troubleshoot a node that's NotReady?**
+- [ ] Pod failure systematic debug flow follow முடியும்
+- [ ] etcd backup/restore execute முடியும்
+- [ ] Velero setup and restore முடியும்
+- [ ] Talos-specific troubleshooting explain முடியும்
+- [ ] DR strategy design முடியும்

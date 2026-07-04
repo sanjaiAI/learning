@@ -1,271 +1,190 @@
-# Module 11: GitOps (Argo CD, Flux CD)
+# Module 11: GitOps (Argo CD & Flux CD)
+# மாடுல் 11: GitOps
 
-## Why this matters for your profile
-You drive GitOps adoption for declarative, auditable infrastructure and application delivery. This is how you manage CI/CD platform deployments across AKS, GKE, Talos, and OKD clusters.
+---
 
-## Concept Clarity
+## 🎯 What? | என்ன?
 
-### GitOps Principles
-1. **Declarative:** Entire system described in Git
-2. **Versioned:** Git as single source of truth (audit trail)
-3. **Automated:** Approved changes auto-applied to cluster
-4. **Self-healing:** Drift detection and reconciliation
+**English:** GitOps = Git is the single source of truth. Whatever is in Git, that's what runs in your cluster. Change Git → cluster auto-updates.
 
-### Push vs Pull Model
-| Model | Description | Example |
-|-------|-------------|---------|
-| Push | CI pipeline applies manifests to cluster | Jenkins `kubectl apply` |
-| Pull | Agent in cluster pulls from Git | Argo CD, Flux CD |
+**தமிழ்:** GitOps = Git-ல் என்ன இருக்கிறதோ, அதுவே cluster-ல் run ஆகும். Git-ல் change செய்தால், cluster தானாக update ஆகும்.
 
-### Argo CD Architecture
-| Component | Purpose |
-|-----------|---------|
-| Application Controller | Reconciles desired vs actual state |
-| Repo Server | Clones Git repos, renders manifests |
-| API Server | REST/gRPC API, UI, CLI |
-| ApplicationSet | Generate Applications from templates |
-| Notifications | Alert on sync status changes |
+### Analogy | உதாரணம்
+> Google Docs: Whatever you type appears on everyone's screen automatically. Git = the document. Cluster = everyone's screen. Argo CD/Flux = auto-sync engine.
 
-### Flux CD Architecture
-| Component | Purpose |
-|-----------|---------|
-| Source Controller | Fetches from Git/Helm/OCI repos |
-| Kustomize Controller | Reconciles Kustomize overlays |
-| Helm Controller | Reconciles HelmReleases |
-| Notification Controller | Alerts and webhooks |
-| Image Automation | Auto-update image tags in Git |
+> Google Docs: நீங்கள் type செய்ததும் எல்லோர் screen-லும் appear ஆகிறது. Git = document. Cluster = screen. Argo CD = sync engine.
 
-### Argo CD vs Flux CD
+---
+
+## 📊 Push vs Pull Model
+
+| Model | How | Security | தமிழ் |
+|-------|-----|----------|-------|
+| **Push** (traditional) | CI pipeline runs `kubectl apply` | CI needs cluster credentials 🔓 | CI-க்கு cluster access வேண்டும் (risky) |
+| **Pull** (GitOps) ✓ | Agent IN cluster pulls from Git | No external access needed ✅ | Cluster உள்ளே agent Git-லிருந்து pull செய்கிறது (safe) |
+
+```mermaid
+graph LR
+    DEV[Developer] -->|git push| GIT[Git Repo]
+    GIT -->|watches| ARGO[Argo CD / Flux<br/>Cluster-ல் உள்ளது]
+    ARGO -->|applies| CLUSTER[Cluster Resources]
+    ARGO -->|detects drift| GIT
+```
+
+---
+
+## ⚔️ Argo CD vs Flux CD
+
 | Feature | Argo CD | Flux CD |
 |---------|---------|---------|
-| UI | Rich built-in UI | No built-in UI (Weave GitOps optional) |
-| Multi-tenancy | AppProject isolation | Namespace scoping |
-| Rendering | Helm, Kustomize, Jsonnet, plain | Kustomize, Helm |
-| ApplicationSet | Powerful generation | Flux lacks equivalent |
-| Image automation | Argo Image Updater | Built-in |
-| CRD-based | Application, AppProject | GitRepository, Kustomization, HelmRelease |
+| UI | Beautiful built-in UI ✓ | No UI (CLI/Weave GitOps) |
+| Learning curve | Moderate | Easy |
+| Multi-cluster | ApplicationSet (powerful) | Multi-repo support |
+| CRDs | Application, AppProject | GitRepository, Kustomization, HelmRelease |
+| Best for | Visual teams, complex setups | CLI-first teams, simple setups |
 
-### Sync Strategies
-| Strategy | Description |
-|----------|-------------|
-| Manual | Requires manual sync trigger |
-| Auto-sync | Applies changes automatically |
-| Self-heal | Reverts manual kubectl changes |
-| Prune | Deletes resources removed from Git |
+---
 
-## Command Mastery
+## 🛠️ Commands | Commands
 
 ### Argo CD
 
 ```bash
-# Install Argo CD
+# Install
 kubectl create namespace argocd
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
-# Access UI
-kubectl port-forward svc/argocd-server -n argocd 8080:443
 # Get admin password
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 
-# CLI login
-argocd login localhost:8080 --insecure
-argocd account update-password
+# Access UI
+kubectl port-forward svc/argocd-server -n argocd 8080:443
 
-# Create Application
+# Create Application (Git-ல் இருக்கும் manifests deploy செய்)
 cat <<EOF | kubectl apply -f -
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: ci-platform
+  name: my-app
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: https://github.com/org/k8s-manifests.git
     targetRevision: main
-    path: environments/production/ci-platform
+    path: apps/production
   destination:
     server: https://kubernetes.default.svc
-    namespace: ci
+    namespace: production
   syncPolicy:
     automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-    - CreateNamespace=true
-    retry:
-      limit: 5
-      backoff:
-        duration: 5s
-        factor: 2
-        maxDuration: 3m
-EOF
-
-# ApplicationSet (multi-cluster)
-cat <<EOF | kubectl apply -f -
-apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
-metadata:
-  name: platform-services
-  namespace: argocd
-spec:
-  generators:
-  - clusters:
-      selector:
-        matchLabels:
-          environment: production
-  template:
-    metadata:
-      name: '{{name}}-monitoring'
-    spec:
-      project: platform
-      source:
-        repoURL: https://github.com/org/platform-charts.git
-        targetRevision: main
-        path: monitoring
-      destination:
-        server: '{{server}}'
-        namespace: monitoring
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-EOF
-
-# AppProject for isolation
-cat <<EOF | kubectl apply -f -
-apiVersion: argoproj.io/v1alpha1
-kind: AppProject
-metadata:
-  name: ci-team
-  namespace: argocd
-spec:
-  description: CI/CD team project
-  sourceRepos:
-  - 'https://github.com/org/ci-*'
-  destinations:
-  - namespace: 'ci-*'
-    server: https://kubernetes.default.svc
-  clusterResourceWhitelist:
-  - group: ''
-    kind: Namespace
-  namespaceResourceWhitelist:
-  - group: '*'
-    kind: '*'
+      prune: true       # Git-லிருந்து remove ஆனால் cluster-லும் delete
+      selfHeal: true    # Manual kubectl change revert ஆகும்!
 EOF
 
 # CLI operations
 argocd app list
-argocd app get ci-platform
-argocd app sync ci-platform
-argocd app diff ci-platform
-argocd app history ci-platform
-argocd app rollback ci-platform 2
+argocd app sync my-app       # Force sync
+argocd app diff my-app       # What's different?
+argocd app rollback my-app 2 # Previous version-க்கு போ
 ```
 
 ### Flux CD
 
 ```bash
-# Bootstrap Flux
+# Bootstrap (Git repo-வுடன் connect)
 flux bootstrap github \
-  --owner=my-org \
-  --repository=fleet-infra \
-  --branch=main \
-  --path=clusters/production \
-  --personal
+  --owner=my-org --repository=fleet-infra \
+  --branch=main --path=clusters/production
 
-# GitRepository source
+# Git source define
 cat <<EOF | kubectl apply -f -
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
-  name: platform-repo
+  name: my-repo
   namespace: flux-system
 spec:
   interval: 1m
-  url: https://github.com/org/platform-manifests
-  ref:
-    branch: main
-  secretRef:
-    name: git-credentials
+  url: https://github.com/org/manifests
+  ref: {branch: main}
 EOF
 
-# Kustomization (reconcile path from Git)
+# Kustomization (reconcile from Git)
 cat <<EOF | kubectl apply -f -
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: ci-platform
+  name: my-app
   namespace: flux-system
 spec:
   interval: 5m
-  path: ./environments/production/ci
+  path: ./apps/production
   prune: true
-  sourceRef:
-    kind: GitRepository
-    name: platform-repo
-  healthChecks:
-  - apiVersion: apps/v1
-    kind: Deployment
-    name: jenkins
-    namespace: ci
-  timeout: 3m
+  sourceRef: {kind: GitRepository, name: my-repo}
 EOF
 
-# HelmRelease
-cat <<EOF | kubectl apply -f -
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
-kind: HelmRelease
-metadata:
-  name: prometheus
-  namespace: monitoring
-spec:
-  interval: 10m
-  chart:
-    spec:
-      chart: kube-prometheus-stack
-      version: ">=45.0.0 <46.0.0"
-      sourceRef:
-        kind: HelmRepository
-        name: prometheus-community
-        namespace: flux-system
-  values:
-    prometheus:
-      prometheusSpec:
-        retention: 30d
-EOF
-
-# Flux CLI
+# CLI
 flux get all
-flux get kustomizations
-flux reconcile kustomization ci-platform
-flux logs --kind=Kustomization --name=ci-platform
-flux suspend kustomization ci-platform
-flux resume kustomization ci-platform
+flux reconcile kustomization my-app  # Force sync
+flux logs --kind=Kustomization --name=my-app
 ```
 
-## Practical Lab
+---
 
-### Exercises
-1. Install Argo CD — create an Application pointing to a Git repo with K8s manifests
-2. Enable auto-sync with self-heal — make a manual `kubectl` change and watch it revert
-3. Create an ApplicationSet that deploys to multiple namespaces from a single source
-4. Install Flux — bootstrap and deploy a HelmRelease
-5. Implement a promotion workflow: dev → staging → production via Git PRs
-6. Set up Argo CD notifications to Slack on sync failures
+## 📋 Cheat Sheet | விரைவு குறிப்பு
 
-### Pass Criteria
-- You can set up GitOps from scratch with either Argo CD or Flux
-- You understand sync strategies and their implications
-- You can design multi-environment promotion workflows
-- You know how to handle secrets in GitOps (Sealed Secrets, SOPS, External Secrets)
+```
+┌──────────────────────────────────────────────────┐
+│            GITOPS CHEAT SHEET                    │
+├──────────────────────────────────────────────────┤
+│ PRINCIPLES:                                      │
+│   1. Git = single source of truth                │
+│   2. Declarative (YAML in Git)                   │
+│   3. Auto-applied (PR merge = deploy)            │
+│   4. Self-healing (drift auto-fixed)             │
+│                                                  │
+│ ARGO CD SYNC MODES:                              │
+│   Manual    = click to deploy                    │
+│   Auto-sync = merge PR → auto deploy             │
+│   Self-heal = kubectl change → reverted!         │
+│   Prune     = delete from Git → delete cluster   │
+│                                                  │
+│ SECRETS IN GITOPS:                               │
+│   ❌ Plain secrets in Git                        │
+│   ✓ Sealed Secrets (encrypted in Git)            │
+│   ✓ External Secrets Operator                    │
+│   ✓ SOPS encryption                             │
+│                                                  │
+│ PROMOTION WORKFLOW:                              │
+│   dev branch → PR → staging → PR → production    │
+│   Git PR = deployment approval!                  │
+└──────────────────────────────────────────────────┘
+```
 
-## Mock Interview Questions
+---
 
-1. **Explain GitOps principles. Why is the pull model better than push for production?**
-2. **Compare Argo CD and Flux CD. When would you choose each?**
-3. **How do you handle secrets in a GitOps workflow where everything is in Git?**
-4. **Design a multi-cluster GitOps architecture for dev/staging/production environments.**
-5. **What happens when someone makes a manual kubectl change in a GitOps-managed cluster?**
-6. **How would you implement progressive delivery (canary/blue-green) with GitOps?**
-7. **A sync is failing. How do you debug? What are common failure modes?**
+## 🎤 Interview Q&A | நேர்முகத் தேர்வு
+
+**Q: Why Pull model better than Push?**
+- Push = CI needs cluster credentials (attack vector). Push doesn't detect drift.
+- Pull = agent inside cluster (no external access needed). Auto-detects drift. Auditable via Git history.
+
+**Q: Someone runs `kubectl edit` on a GitOps-managed resource?**
+- Self-heal enabled → Argo/Flux reverts the manual change within sync interval.
+- Git is truth. Manual changes overwritten.
+
+**Q: How to handle secrets in GitOps?**
+- Sealed Secrets (Bitnami): encrypt in Git, controller decrypts in cluster
+- External Secrets Operator: reference external store (Vault), sync to K8s Secret
+- SOPS + age/KMS: encrypt values.yaml files in Git
+
+---
+
+## ✅ Self-Check | சுய மதிப்பீடு
+
+- [ ] GitOps principles explain முடியும்
+- [ ] Push vs Pull model compare முடியும்
+- [ ] Argo CD Application create முடியும்
+- [ ] Flux Kustomization create முடியும்
+- [ ] Secrets strategy in GitOps explain முடியும்

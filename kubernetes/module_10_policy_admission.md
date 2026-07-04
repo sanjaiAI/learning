@@ -1,203 +1,129 @@
-# Module 10: OPA Gatekeeper, Kyverno & Policy-as-Code
+# Module 10: Policy-as-Code (OPA Gatekeeper & Kyverno)
+# மாடுல் 10: Policy-as-Code (கொள்கை குறியீடு)
 
-## Why this matters for your profile
-You're an expert at OPA Gatekeeper — enforcing admission control, workload compliance, and resource governance. This is a core differentiator in your DevSecOps architect profile.
+---
 
-## Concept Clarity
+## 🎯 What? | என்ன?
 
-### Admission Control Chain
+**English:** Policy-as-Code = writing security/compliance rules as code that automatically blocks bad deployments. Instead of manual review, the system enforces rules.
+
+**தமிழ்:** Policy-as-Code = security/compliance rules-ஐ code-ஆக எழுதி, bad deployments-ஐ automatically block செய்வது. Manual review இல்லாமல் system enforce செய்கிறது.
+
+### Analogy | உதாரணம்
+> Airport security scanner: You don't manually check every bag — the scanner (admission controller) automatically rejects prohibited items (policy violations).
+
+> Airport security: Scanner automatically prohibited items reject செய்கிறது. நீங்கள் manually check செய்ய வேண்டாம். Policy = what's prohibited list.
+
+---
+
+## 📊 How it works | எப்படி works
+
+```mermaid
+graph LR
+    DEV[Developer<br/>kubectl apply] --> API[API Server]
+    API --> AUTH[Authentication<br/>யார்?]
+    AUTH --> AUTHZ[Authorization<br/>அனுமதி?]
+    AUTHZ --> MUT[Mutating Webhooks<br/>Auto-fix/inject]
+    MUT --> VAL[Validating Webhooks<br/>Policy check ❌✓]
+    VAL --> ETCD[etcd<br/>Saved ✓]
+    
+    GK[Gatekeeper/Kyverno] -.-> VAL
+    GK -.-> MUT
 ```
-kubectl apply → API Server → Authentication → Authorization → Mutating Webhooks → Validating Webhooks → etcd
-                                                                    ↑                      ↑
-                                                              (Kyverno mutate)     (Gatekeeper/Kyverno validate)
-```
 
-### OPA Gatekeeper Architecture
-| Component | Purpose |
-|-----------|---------|
-| ConstraintTemplate | Defines the policy logic (Rego) |
-| Constraint | Instance of a template with parameters |
-| Audit | Background check of existing resources |
-| Sync (Config) | Replicate resources for cross-resource policies |
+---
 
-### Kyverno Architecture
-| Feature | Description |
-|---------|-------------|
-| ClusterPolicy / Policy | YAML-native policy (no Rego needed) |
-| Validate | Block non-compliant resources |
-| Mutate | Auto-inject defaults (labels, sidecars) |
-| Generate | Auto-create resources (NetworkPolicy, ResourceQuota) |
-| Verify Images | Cosign signature verification |
+## ⚔️ Gatekeeper vs Kyverno | ஒப்பீடு
 
-### Gatekeeper vs Kyverno
-| Feature | Gatekeeper | Kyverno |
-|---------|-----------|---------|
-| Language | Rego | YAML (JMESPath) |
-| Learning curve | Steeper | Easier |
-| Mutation | Limited (v3.7+) | First-class |
-| Generation | No | Yes |
-| Image verification | External | Built-in |
-| Maturity | Older, CNCF Graduated | Newer, CNCF Incubating |
+| Feature | OPA Gatekeeper | Kyverno |
+|---------|---------------|---------|
+| Language | Rego (custom language) | YAML (familiar!) |
+| Learning curve | Steep (Rego கற்க வேண்டும்) | Easy (YAML already know) |
+| Validate | ✅ | ✅ |
+| Mutate | Limited | ✅ Full support |
+| Generate resources | ❌ | ✅ Auto-create NetworkPolicy, etc. |
+| Image verification | External | ✅ Built-in (Cosign) |
 
-### Common Policies (DevSecOps)
-| Policy | Purpose |
-|--------|---------|
-| No privileged containers | Security baseline |
-| Required labels | Governance, cost tracking |
-| Allowed registries | Supply chain security |
-| Resource limits required | Prevent resource starvation |
-| No latest tag | Reproducibility |
-| Read-only root filesystem | Container hardening |
-| No hostPath volumes | Isolation |
-| Image signature verification | Supply chain trust |
+> 💡 **தமிழ்:** Gatekeeper = powerful but complex (Rego language learn செய்யணும்). Kyverno = simple YAML-based (already YAML தெரியும், easy!).
 
-## Command Mastery
+---
+
+## 🛠️ Commands | Commands
 
 ### OPA Gatekeeper
 
 ```bash
-# Install Gatekeeper
-helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
+# Install
 helm install gatekeeper gatekeeper/gatekeeper -n gatekeeper-system --create-namespace
 
-# ConstraintTemplate — require labels
+# --- Policy: Block "latest" tag (Rego) ---
+# Step 1: Template (logic)
 cat <<EOF | kubectl apply -f -
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
-  name: k8srequiredlabels
+  name: k8sblocklatest
 spec:
   crd:
     spec:
       names:
-        kind: K8sRequiredLabels
-      validation:
-        openAPIV3Schema:
-          type: object
-          properties:
-            labels:
-              type: array
-              items:
-                type: string
+        kind: K8sBlockLatest
   targets:
   - target: admission.k8s.gatekeeper.sh
     rego: |
-      package k8srequiredlabels
-      violation[{"msg": msg}] {
-        provided := {label | input.review.object.metadata.labels[label]}
-        required := {label | label := input.parameters.labels[_]}
-        missing := required - provided
-        count(missing) > 0
-        msg := sprintf("Missing required labels: %v", [missing])
-      }
-EOF
-
-# Constraint — enforce on all pods
-cat <<EOF | kubectl apply -f -
-apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sRequiredLabels
-metadata:
-  name: pods-must-have-owner
-spec:
-  match:
-    kinds:
-    - apiGroups: [""]
-      kinds: ["Pod"]
-    namespaceSelector:
-      matchExpressions:
-      - key: gatekeeper-ignore
-        operator: DoesNotExist
-  parameters:
-    labels:
-    - "team"
-    - "app"
-EOF
-
-# ConstraintTemplate — allowed registries
-cat <<EOF | kubectl apply -f -
-apiVersion: templates.gatekeeper.sh/v1
-kind: ConstraintTemplate
-metadata:
-  name: k8sallowedregistries
-spec:
-  crd:
-    spec:
-      names:
-        kind: K8sAllowedRegistries
-      validation:
-        openAPIV3Schema:
-          type: object
-          properties:
-            registries:
-              type: array
-              items:
-                type: string
-  targets:
-  - target: admission.k8s.gatekeeper.sh
-    rego: |
-      package k8sallowedregistries
+      package k8sblocklatest
       violation[{"msg": msg}] {
         container := input.review.object.spec.containers[_]
-        not startswith_any(container.image, input.parameters.registries)
-        msg := sprintf("Image '%v' is not from an allowed registry. Allowed: %v", [container.image, input.parameters.registries])
-      }
-      startswith_any(image, registries) {
-        registry := registries[_]
-        startswith(image, registry)
+        endswith(container.image, ":latest")
+        msg := sprintf("Image '%v' uses :latest tag. Use specific version!", [container.image])
       }
 EOF
 
-# Constraint instance
+# Step 2: Constraint (apply policy)
 cat <<EOF | kubectl apply -f -
 apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sAllowedRegistries
+kind: K8sBlockLatest
 metadata:
-  name: allowed-registries
+  name: no-latest-tag
 spec:
   match:
     kinds:
     - apiGroups: [""]
       kinds: ["Pod"]
     - apiGroups: ["apps"]
-      kinds: ["Deployment", "StatefulSet", "DaemonSet"]
-  parameters:
-    registries:
-    - "gcr.io/my-project/"
-    - "myregistry.azurecr.io/"
-    - "docker.io/library/"
+      kinds: ["Deployment"]
 EOF
 
-# Check audit results
-kubectl get k8srequiredlabels pods-must-have-owner -o yaml | grep -A 20 violations
+# Test — இது reject ஆகும்!
+kubectl run test --image=nginx:latest
+# Error: Image 'nginx:latest' uses :latest tag. Use specific version!
 
-# Test violation
-kubectl run test --image=unauthorized.io/nginx  # Should be rejected
+# Audit existing violations
+kubectl get k8sblocklatest no-latest-tag -o yaml | grep -A 20 violations
 ```
 
 ### Kyverno
 
 ```bash
-# Install Kyverno
-helm repo add kyverno https://kyverno.github.io/kyverno
+# Install
 helm install kyverno kyverno/kyverno -n kyverno --create-namespace
 
-# Validate — require resource limits
+# --- Policy: Require resource limits (YAML — easy!) ---
 cat <<EOF | kubectl apply -f -
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: require-resource-limits
+  name: require-limits
 spec:
-  validationFailureAction: Enforce
+  validationFailureAction: Enforce    # Block! (Audit = warn only)
   rules:
   - name: check-limits
     match:
       any:
       - resources:
-          kinds:
-          - Pod
+          kinds: [Pod]
     validate:
-      message: "CPU and memory limits are required."
+      message: "CPU and memory limits required! Limits இல்லாம deploy முடியாது."
       pattern:
         spec:
           containers:
@@ -207,20 +133,19 @@ spec:
                 memory: "?*"
 EOF
 
-# Mutate — inject default labels
+# --- Policy: Auto-inject labels (Mutate) ---
 cat <<EOF | kubectl apply -f -
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: add-default-labels
+  name: add-labels
 spec:
   rules:
-  - name: add-team-label
+  - name: add-managed-by
     match:
       any:
       - resources:
-          kinds:
-          - Pod
+          kinds: [Pod]
     mutate:
       patchStrategicMerge:
         metadata:
@@ -229,86 +154,102 @@ spec:
             environment: "{{request.namespace}}"
 EOF
 
-# Generate — auto-create NetworkPolicy for new namespaces
+# --- Policy: Auto-create NetworkPolicy for new namespaces ---
 cat <<EOF | kubectl apply -f -
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: generate-default-netpol
+  name: auto-netpol
 spec:
   rules:
-  - name: default-deny
+  - name: generate-deny-all
     match:
       any:
       - resources:
-          kinds:
-          - Namespace
+          kinds: [Namespace]
     generate:
       kind: NetworkPolicy
       apiVersion: networking.k8s.io/v1
-      name: default-deny-ingress
+      name: default-deny
       namespace: "{{request.object.metadata.name}}"
       data:
         spec:
           podSelector: {}
-          policyTypes:
-          - Ingress
-EOF
-
-# Verify image signatures (Cosign)
-cat <<EOF | kubectl apply -f -
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
-metadata:
-  name: verify-image-signature
-spec:
-  validationFailureAction: Enforce
-  rules:
-  - name: verify-cosign
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    verifyImages:
-    - imageReferences:
-      - "myregistry.io/*"
-      attestors:
-      - entries:
-        - keys:
-            publicKeys: |-
-              -----BEGIN PUBLIC KEY-----
-              <your-cosign-public-key>
-              -----END PUBLIC KEY-----
+          policyTypes: [Ingress]
 EOF
 
 # Check policy reports
 kubectl get policyreport -A
-kubectl get clusterpolicyreport
 ```
 
-## Practical Lab
+---
 
-### Exercises
-1. Install Gatekeeper and create a ConstraintTemplate that blocks `latest` image tags
-2. Write a Rego policy that requires all pods to have resource limits
-3. Install Kyverno and create a mutation policy that adds a sidecar to all pods in a namespace
-4. Create a Kyverno generate policy that creates a ResourceQuota for every new namespace
-5. Implement an allowed-registries policy and verify it blocks unauthorized images
-6. Run an audit of existing resources against your policies — remediate violations
+## 📋 Common Policies | பொதுவான கொள்கைகள்
 
-### Pass Criteria
-- You can write Rego policies for Gatekeeper from scratch
-- You can create Kyverno policies for validate/mutate/generate
-- You understand the audit vs enforce modes and rollout strategy
-- You can design a policy-as-code strategy for a multi-tenant platform
+| Policy | Why | தமிழ் |
+|--------|-----|-------|
+| No `:latest` tag | Reproducibility | Latest tag = unpredictable |
+| Required labels | Governance, cost tracking | யாருடைய pod என்று identify |
+| Allowed registries only | Supply chain security | Approved registries மட்டும் |
+| Resource limits required | Prevent resource starvation | எல்லா pods-க்கும் limits வேண்டும் |
+| No privileged containers | Security | Root access block |
+| Read-only root filesystem | Hardening | Write access block |
+| Image signatures | Trust | Cosign signed images only |
 
-## Mock Interview Questions
+---
 
-1. **Design a policy-as-code strategy for a multi-tenant CI/CD Kubernetes platform. What policies would you enforce?**
-2. **Compare OPA Gatekeeper and Kyverno. When would you choose each?**
-3. **How do you roll out a new policy without breaking existing workloads?**
-4. **Write a Rego policy that ensures all containers come from approved registries.**
-5. **How does Gatekeeper audit work? How do you handle existing violations?**
-6. **Explain how image signature verification with Cosign/Sigstore works in an admission controller.**
-7. **How would you implement policy exceptions for system namespaces?**
+## 📋 Cheat Sheet | விரைவு குறிப்பு
+
+```
+┌─────────────────────────────────────────────────────┐
+│         POLICY-AS-CODE CHEAT SHEET                  │
+├─────────────────────────────────────────────────────┤
+│ GATEKEEPER:                                         │
+│   ConstraintTemplate (Rego logic) → Constraint      │
+│   Steep learning, powerful, CNCF Graduated          │
+│                                                     │
+│ KYVERNO:                                            │
+│   ClusterPolicy (YAML! Easy!)                       │
+│   validate + mutate + generate                      │
+│   CNCF Incubating, easier to adopt                  │
+│                                                     │
+│ ROLLOUT STRATEGY:                                   │
+│   1. Audit mode first (warn, don't block)           │
+│   2. Fix existing violations                        │
+│   3. Switch to Enforce (block)                      │
+│                                                     │
+│ MUST-HAVE POLICIES:                                 │
+│   ✓ No :latest tag                                  │
+│   ✓ Resource limits required                        │
+│   ✓ Allowed registries only                         │
+│   ✓ No privileged containers                        │
+│   ✓ Required labels (team, app)                     │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🎤 Interview Q&A | நேர்முகத் தேர்வு
+
+**Q: How to roll out policies without breaking existing workloads?**
+1. Audit mode-ல் deploy (warn only, block செய்யாது)
+2. Violations report generate — teams-க்கு share
+3. Teams fix their workloads
+4. Switch to Enforce mode (block)
+5. Handle exceptions with namespace labels
+
+**Q: Gatekeeper vs Kyverno — which would you choose?**
+- New team? → Kyverno (YAML, easier adoption)
+- Complex policies with cross-resource checks? → Gatekeeper (Rego powerful)
+- Need mutation + generation? → Kyverno
+- Already have OPA ecosystem? → Gatekeeper
+
+---
+
+## ✅ Self-Check | சுய மதிப்பீடு
+
+- [ ] Admission webhook flow explain முடியும்
+- [ ] Gatekeeper ConstraintTemplate write முடியும் (Rego)
+- [ ] Kyverno policy write முடியும் (validate/mutate/generate)
+- [ ] Policy rollout strategy explain முடியும்
+- [ ] 5+ common policies list செய்ய முடியும்

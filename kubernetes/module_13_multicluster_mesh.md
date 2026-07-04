@@ -1,233 +1,263 @@
-# Module 13: Multi-cluster, Federation & Service Mesh
+# Module 13: Multi-Cluster & Service Mesh
+# மாடுல் 13: Multi-Cluster & Service Mesh
 
-## Why this matters for your profile
-You manage workloads across GKE, AKS, Talos, and OKD clusters. Understanding multi-cluster patterns, service mesh, and federation is critical for designing resilient, distributed platforms.
+---
 
-## Concept Clarity
+## 🎯 What? | என்ன?
 
-### Multi-Cluster Patterns
-| Pattern | Description | Use Case |
-|---------|-------------|----------|
-| Replicated | Same workloads on multiple clusters | HA, geo-distribution |
-| Partitioned | Different workloads per cluster | Team isolation, regulation |
-| Hybrid | Mix of cloud + on-prem | Your setup (GKE + Talos + AKS) |
-| Failover | Active-passive cluster pair | Disaster recovery |
+**English:** Multi-cluster = running workloads across multiple K8s clusters (different clouds/regions). Service Mesh = transparent network layer for observability, security (mTLS), and traffic control between services.
 
-### Multi-Cluster Management Tools
-| Tool | Approach |
-|------|----------|
-| Argo CD (ApplicationSet) | GitOps-based multi-cluster |
-| Flux CD (multi-cluster) | GitOps with cluster-as-code |
-| Rancher | Multi-cluster management UI/API |
-| Admiralty | Virtual kubelet for cross-cluster scheduling |
-| Liqo | Kubernetes multi-cluster fabric |
-| Skupper | Layer 7 multi-cluster service connectivity |
+**தமிழ்:** Multi-cluster = பல K8s clusters-ல் workloads run செய்வது (different clouds/regions). Service Mesh = services-க்கு இடையில் transparent network layer (observability, mTLS security, traffic control).
 
-### Service Mesh
-| Mesh | Key Feature |
-|------|-------------|
-| Istio | Feature-rich, Envoy-based, complex |
-| Linkerd | Lightweight, Rust-based proxy |
-| Cilium Service Mesh | eBPF-based, no sidecar |
-| Consul Connect | HashiCorp ecosystem |
+### Analogy | உதாரணம்
+> Highway system: Multiple cities (clusters) connected by highways (mesh). Traffic police (sidecar proxies) at every intersection control flow, check IDs (mTLS), and report traffic data (observability).
 
-### Service Mesh Capabilities
-| Feature | Description |
-|---------|-------------|
-| mTLS | Automatic mutual TLS between services |
-| Traffic management | Canary, blue-green, traffic splitting |
-| Observability | Distributed tracing, metrics, access logs |
-| Retry/timeout/circuit breaking | Resilience patterns |
-| Authorization policies | Service-to-service access control |
+> Highway: பல cities (clusters), highways-ஆல் connected. Traffic police (sidecar proxies) = traffic control, ID check (mTLS), data report.
 
-### Istio Architecture
-```
-Control Plane: istiod (Pilot + Citadel + Galley)
-Data Plane: Envoy sidecar proxies (injected per pod)
+---
 
-Traffic flow: Pod A → Envoy(A) → mTLS → Envoy(B) → Pod B
+## 📊 Architecture | கட்டமைப்பு
+
+```mermaid
+graph TB
+    subgraph "Control Plane (Istiod)"
+        PILOT[Pilot<br/>Config distribution]
+        CITADEL[Citadel<br/>Certificate/mTLS]
+        GALLEY[Galley<br/>Config validation]
+    end
+    
+    subgraph "Data Plane"
+        subgraph "Pod A"
+            APP_A[App Container]
+            ENVOY_A[Envoy Sidecar]
+        end
+        subgraph "Pod B"
+            APP_B[App Container]
+            ENVOY_B[Envoy Sidecar]
+        end
+    end
+    
+    PILOT --> ENVOY_A
+    PILOT --> ENVOY_B
+    ENVOY_A <-->|mTLS 🔒| ENVOY_B
+    APP_A --> ENVOY_A
+    APP_B --> ENVOY_B
 ```
 
-## Command Mastery
+---
 
-### Multi-Cluster with Argo CD
+## ⚔️ Mesh Options | Mesh தேர்வுகள்
+
+| Feature | Istio | Linkerd | Cilium |
+|---------|-------|---------|--------|
+| Proxy | Envoy (heavy, powerful) | Rust micro-proxy (lightweight) | eBPF (no sidecar!) |
+| mTLS | ✅ | ✅ | ✅ |
+| Performance | Higher latency | Very low latency | Lowest (kernel-level) |
+| Complexity | Complex (many CRDs) | Simple | Moderate |
+| L7 policies | Full (HTTP, gRPC) | Basic | Growing |
+| Best for | Enterprise, complex routing | Simple mesh needs | Performance-critical |
+
+> 💡 **தமிழ்:** Istio = powerful but complex. Linkerd = simple, fast. Cilium = no sidecar, eBPF magic (fastest!).
+
+---
+
+## 🛠️ Commands | Commands
+
+### Istio
 
 ```bash
-# Register clusters in Argo CD
-argocd cluster add gke-prod --name gke-production
-argocd cluster add aks-staging --name aks-staging
-argocd cluster add talos-onprem --name talos-onprem
+# Install
+istioctl install --set profile=production
 
-argocd cluster list
+# Enable injection for namespace
+kubectl label namespace production istio-injection=enabled
 
-# ApplicationSet for multi-cluster deployment
+# mTLS — எல்லா services-க்கும் automatically encrypted
+cat <<EOF | kubectl apply -f -
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: strict-mtls
+  namespace: production
+spec:
+  mtls:
+    mode: STRICT    # All traffic must be mTLS (plain text rejected)
+EOF
+
+# Traffic splitting (Canary: 90% old, 10% new)
+cat <<EOF | kubectl apply -f -
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: my-app
+spec:
+  hosts: [my-app]
+  http:
+  - route:
+    - destination:
+        host: my-app
+        subset: stable
+      weight: 90
+    - destination:
+        host: my-app
+        subset: canary
+      weight: 10
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: my-app
+spec:
+  host: my-app
+  subsets:
+  - name: stable
+    labels: {version: v1}
+  - name: canary
+    labels: {version: v2}
+EOF
+
+# Circuit breaker (prevent cascade failure)
+cat <<EOF | kubectl apply -f -
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: payment-svc
+spec:
+  host: payment-svc
+  trafficPolicy:
+    connectionPool:
+      tcp: {maxConnections: 100}
+      http: {h2UpgradePolicy: DEFAULT, http1MaxPendingRequests: 100}
+    outlierDetection:
+      consecutive5xxErrors: 3
+      interval: 30s
+      baseEjectionTime: 60s    # 3 errors → eject for 60s
+EOF
+```
+
+### Multi-Cluster (GKE + AKS + Talos)
+
+```bash
+# Approach 1: Shared mesh (same trust domain)
+# Setup primary mesh on GKE
+istioctl install --set values.global.meshID=mesh1 \
+  --set values.global.network=gke-network
+
+# Join AKS to mesh
+istioctl install --set values.global.meshID=mesh1 \
+  --set values.global.network=aks-network \
+  --set values.global.remotePilotAddress=<gke-istiod-ip>
+
+# Approach 2: Argo CD ApplicationSet (multi-cluster GitOps)
 cat <<EOF | kubectl apply -f -
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: monitoring-fleet
+  name: my-app-multi
   namespace: argocd
 spec:
   generators:
   - clusters:
       selector:
         matchLabels:
-          tier: production
+          env: production
   template:
     metadata:
-      name: '{{name}}-monitoring'
+      name: 'my-app-{{name}}'
     spec:
-      project: platform
       source:
-        repoURL: https://github.com/org/platform.git
-        targetRevision: main
-        path: monitoring/base
+        repoURL: https://github.com/org/manifests
+        path: apps/production
       destination:
         server: '{{server}}'
-        namespace: monitoring
-      syncPolicy:
-        automated:
-          prune: true
+        namespace: production
 EOF
 ```
 
-### Istio Service Mesh
+### Cilium (No sidecar — eBPF)
 
 ```bash
-# Install Istio
-istioctl install --set profile=default -y
-kubectl label namespace default istio-injection=enabled
+# Install
+helm install cilium cilium/cilium -n kube-system \
+  --set hubble.enabled=true \
+  --set hubble.relay.enabled=true
 
-# Verify sidecars
-kubectl get pods -o jsonpath='{.items[*].spec.containers[*].name}' | tr ' ' '\n' | sort | uniq
-
-# Traffic management — canary
+# Network Policy (L7 HTTP-level — more powerful than K8s default)
 cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
 metadata:
-  name: myapp
+  name: api-access
 spec:
-  hosts:
-  - myapp
-  http:
-  - route:
-    - destination:
-        host: myapp
-        subset: v1
-      weight: 90
-    - destination:
-        host: myapp
-        subset: v2
-      weight: 10
+  endpointSelector:
+    matchLabels: {app: api}
+  ingress:
+  - fromEndpoints:
+    - matchLabels: {app: frontend}
+    toPorts:
+    - ports: [{port: "8080", protocol: TCP}]
+      rules:
+        http:
+        - method: GET                     # Only GET allowed!
+          path: "/api/v1/products"        # Only this path!
+EOF
+```
+
 ---
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: myapp
-spec:
-  host: myapp
-  subsets:
-  - name: v1
-    labels:
-      version: v1
-  - name: v2
-    labels:
-      version: v2
-EOF
 
-# mTLS (PeerAuthentication)
-cat <<EOF | kubectl apply -f -
-apiVersion: security.istio.io/v1beta1
-kind: PeerAuthentication
-metadata:
-  name: default
-  namespace: istio-system
-spec:
-  mtls:
-    mode: STRICT
-EOF
+## 📋 Cheat Sheet | விரைவு குறிப்பு
 
-# Authorization Policy
-cat <<EOF | kubectl apply -f -
-apiVersion: security.istio.io/v1beta1
-kind: AuthorizationPolicy
-metadata:
-  name: allow-ci-only
-  namespace: production
-spec:
-  action: ALLOW
-  rules:
-  - from:
-    - source:
-        namespaces: ["ci"]
-    - source:
-        principals: ["cluster.local/ns/ci/sa/deploy-agent"]
-  - to:
-    - operation:
-        methods: ["GET", "POST"]
-        paths: ["/api/*"]
-EOF
-
-# Observability
-istioctl dashboard kiali
-istioctl dashboard jaeger
-istioctl analyze  # Configuration validation
+```
+┌──────────────────────────────────────────────────┐
+│     MULTI-CLUSTER & MESH CHEAT SHEET             │
+├──────────────────────────────────────────────────┤
+│ SERVICE MESH PROVIDES:                           │
+│   mTLS (automatic encryption, zero code change)  │
+│   Observability (metrics, traces, logs)          │
+│   Traffic control (canary, circuit breaker)      │
+│   Retries, timeouts, rate limiting              │
+│                                                  │
+│ MULTI-CLUSTER PATTERNS:                          │
+│   1. Shared mesh (same trust domain)             │
+│   2. Federated (separate control planes)         │
+│   3. GitOps multi-cluster (ApplicationSet)       │
+│                                                  │
+│ YOUR PLATFORMS:                                   │
+│   GKE    — Managed Istio (Anthos)                │
+│   AKS    — Open Service Mesh / Istio             │
+│   Talos  — Cilium (no sidecar, lightweight)      │
+│   OKD    — Built-in SDN or Istio                 │
+│                                                  │
+│ CILIUM vs ISTIO:                                 │
+│   Cilium = eBPF, no sidecar, lower latency       │
+│   Istio  = Envoy, more features, higher latency  │
+└──────────────────────────────────────────────────┘
 ```
 
-### Linkerd (Lightweight alternative)
+---
 
-```bash
-# Install Linkerd
-linkerd install --crds | kubectl apply -f -
-linkerd install | kubectl apply -f -
-linkerd check
+## 🎤 Interview Q&A | நேர்முகத் தேர்வு
 
-# Inject sidecars
-kubectl get deploy -n ci -o yaml | linkerd inject - | kubectl apply -f -
+**Q: Why service mesh? What problem does it solve?**
+- Application code-ல் retry logic, mTLS, metrics எழுத வேண்டாம்
+- Infrastructure level-ல் handle (sidecar proxy handles all)
+- Zero code change = any language works (Go, Java, Python all get same features)
 
-# Dashboard
-linkerd viz install | kubectl apply -f -
-linkerd viz dashboard
+**Q: Istio vs Cilium — when to use which?**
+- Istio: Complex L7 routing, header-based routing, enterprise features, already using Envoy
+- Cilium: Performance-critical, Talos/bare-metal (resource-constrained), kernel-level (eBPF = no sidecar overhead)
 
-# Traffic split
-cat <<EOF | kubectl apply -f -
-apiVersion: split.smi-spec.io/v1alpha2
-kind: TrafficSplit
-metadata:
-  name: myapp-split
-spec:
-  service: myapp
-  backends:
-  - service: myapp-v1
-    weight: 900m
-  - service: myapp-v2
-    weight: 100m
-EOF
-```
+**Q: How to handle service discovery across clusters?**
+- DNS-based: CoreDNS with multi-cluster plugin
+- Mesh-based: Istio multi-cluster (shared trust domain)
+- API gateway: Each cluster exposes gateway, global LB routes
 
-## Practical Lab
+---
 
-### Exercises
-1. Register multiple clusters (kind clusters) in Argo CD and deploy across them
-2. Install Istio — verify mTLS between services using `istioctl proxy-config`
-3. Implement canary deployment with traffic splitting (90/10)
-4. Create an AuthorizationPolicy that restricts service-to-service communication
-5. Install Linkerd and compare resource overhead with Istio
-6. Design a multi-cluster architecture for your CI/CD platform (GKE + Talos + AKS)
+## ✅ Self-Check | சுய மதிப்பீடு
 
-### Pass Criteria
-- You can articulate multi-cluster strategies and trade-offs
-- You understand service mesh data plane vs control plane
-- You can implement mTLS and traffic management
-- You know when a service mesh adds value vs unnecessary complexity
-
-## Mock Interview Questions
-
-1. **Design a multi-cluster strategy for an organization running workloads across GKE, AKS, and on-prem Talos.**
-2. **When would you introduce a service mesh? When is it overkill?**
-3. **Compare Istio, Linkerd, and Cilium Service Mesh. Trade-offs?**
-4. **How does mTLS work in a service mesh? How is certificate rotation handled?**
-5. **Explain canary deployments with traffic splitting. How do you measure success?**
-6. **How would you implement cross-cluster service discovery?**
-7. **What are the performance implications of sidecar injection? How do you mitigate?**
+- [ ] Service mesh architecture (control plane + data plane) explain முடியும்
+- [ ] mTLS setup configure முடியும்
+- [ ] Canary traffic splitting configure முடியும்
+- [ ] Multi-cluster patterns explain முடியும்
+- [ ] Istio vs Linkerd vs Cilium compare முடியும்
