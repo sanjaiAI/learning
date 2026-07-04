@@ -20,3 +20,11 @@
 - Helm chart development and release management
 - Containerized CI/CT workloads (Android Goldfish Emulator pipelines)
 - Pod security, network policies, and workload identity
+
+## Notable Projects
+
+| Project | Platform | Scale | Key Patterns |
+|---------|----------|-------|--------------|
+| **TVS Connected Vehicle & OTA** | Azure AKS (3 clusters) | Millions of vehicles | Multi-cluster, mTLS edge, MQTT IoT, multi-VNet isolation |
+| Embedded CI/CT Platform | On-prem K8s / GKE | 100+ pipelines | Namespace isolation, HW-in-the-loop, resource governance |
+| Platform Services (Jenkins, Gerrit) | AKS | Enterprise | HA, GitOps (Argo CD), centralized auth |

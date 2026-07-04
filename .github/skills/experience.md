@@ -28,6 +28,7 @@
 - Architect and provision multi-node AKS and GKE clusters using Terraform with security-hardened configurations (workload identity, RBAC, network policies, secrets management)
 - Design on-premises Kubernetes platform for containerized CT workloads with namespace isolation and resource governance
 - Drive GitOps adoption (Argo CD / Flux CD) for declarative, auditable infrastructure and application delivery
+- **[TVS Connected Vehicle Platform]** Architected 3-cluster AKS platform (OTA + PKI + Edge) across multi-VNet topology serving millions of connected two-wheelers with mTLS, MQTT telemetry, and OTA firmware delivery
 
 ## Embedded Hardware & Continuous Testing
 
@@ -45,6 +46,7 @@
 - Architect and manage Jenkins, Gerrit, OpenGrok, and monitoring platforms on AKS with HA and centralized authentication
 - Lead Bitbucket → Gerrit migration on Azure Cloud — repository governance, reviewer workflows, and role-based access
 - Design OTA microservices architecture for connected vehicle infotainment (event-driven pipelines, cloud-to-device firmware delivery)
+- **[TVS OTA Platform]** Designed secure firmware distribution pipeline: campaign management → Blob Storage → CDN → vehicle download → PKI signature verification → atomic apply with rollback
 
 ## AI-Driven Pipeline Intelligence
 
