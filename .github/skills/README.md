@@ -32,19 +32,20 @@
 
 | # | Topic | Modules | Status |
 |---|-------|---------|--------|
-| 1 | [Git](../../git/git_fundamentals.md) | 12 modules | 🔄 In Progress |
-| 2 | Gerrit | — | ⬜ Pending |
-| 3 | Jenkins | — | ⬜ Pending |
-| 4 | Docker | — | ⬜ Pending |
-| 5 | [Kubernetes](../../kubernetes/kubernetes_fundamentals.md) | 15 modules | 🔄 In Progress |
-| 6 | Terraform | — | ⬜ Pending |
-| 7 | Helm | — | ⬜ Pending |
-| 8 | Ansible | — | ⬜ Pending |
-| 9 | CI/CD Pipelines | — | ⬜ Pending |
-| 10 | DevSecOps | — | ⬜ Pending |
-| 11 | Cloud (Azure/GCP) | — | ⬜ Pending |
-| 12 | Observability | — | ⬜ Pending |
-| 13 | AI/LLM Integration | — | ⬜ Pending |
+| 1 | [Git](../../git/git_fundamentals.md) | 12 modules | ✅ Complete |
+| 2 | [Kubernetes](../../kubernetes/kubernetes_fundamentals.md) | 15 modules | ✅ Complete |
+| 3 | [Terraform](../../terraform/terraform_fundamentals.md) | 16 modules | ✅ Complete |
+| 4 | [Ansible](../../ansible/ansible_fundamentals.md) | 9/16 modules | 🔄 In Progress |
+| 5 | [Python](../../python/python_fundamentals.md) | 5/15 modules | 🔄 In Progress |
+| 6 | Gerrit | — | ⬜ Pending |
+| 7 | Jenkins | — | ⬜ Pending |
+| 8 | Docker | — | ⬜ Pending |
+| 9 | Helm | — | ⬜ Pending |
+| 10 | CI/CD Pipelines | — | ⬜ Pending |
+| 11 | DevSecOps | — | ⬜ Pending |
+| 12 | Cloud (Azure/GCP) | — | ⬜ Pending |
+| 13 | Observability | — | ⬜ Pending |
+| 14 | AI/LLM Integration | — | ⬜ Pending |
 
 ---
 

@@ -2,8 +2,8 @@
 
 | Tool | Level | Status |
 |------|-------|--------|
-| Terraform | Advanced | ⬜ Pending |
-| Ansible & AWX | Advanced | ⬜ Pending |
+| Terraform | Advanced | ✅ Complete (16 modules) |
+| Ansible & AWX | Advanced | 🔄 In Progress (9/16 modules) |
 
 ## Key Competencies
 

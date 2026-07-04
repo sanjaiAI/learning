@@ -2,7 +2,7 @@
 
 | Language | Level | Status |
 |----------|-------|--------|
-| Python | Expert | ⬜ Pending |
+| Python | Expert | 🔄 In Progress (5/15 modules) |
 | Groovy | Expert | ⬜ Pending |
 | Shell/Bash | Expert | ⬜ Pending |
 | C++ | Intermediate | ⬜ Pending |

@@ -2,7 +2,7 @@
 
 | Tool | Level | Status |
 |------|-------|--------|
-| Git | Expert | 🔄 Revising |
+| Git | Expert | ✅ Complete (12 modules) |
 | Gerrit | Expert | ⬜ Pending |
 | GitLab | Advanced | ⬜ Pending |
 | GitHub | Advanced | ⬜ Pending |

@@ -5,7 +5,7 @@
 | Tool | Level | Status |
 |------|-------|--------|
 | Docker | Expert | ⬜ Pending |
-| Kubernetes (GKE, AKS, Talos, OKD) | Expert (Certified) | 🔄 Revising |
+| Kubernetes (GKE, AKS, Talos, OKD) | Expert (Certified) | ✅ Complete (15 modules) |
 | Helm | Advanced | ⬜ Pending |
 | Talos Linux | Advanced | ⬜ Pending |
 | OKD / OpenShift | Advanced | ⬜ Pending |
