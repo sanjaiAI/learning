@@ -4,7 +4,19 @@
 > **Goal:** Interview preparation — Zero to Hero revision across all domains  
 > **Experience:** ~14 years (Cloud Hosting → SAP HANA Public Cloud → Embedded Automotive)  
 > **Domain:** CI/CD, Security, Cloud & Platform Engineering (Automotive, Fintech, SaaS, Enterprise)  
-> **Approach:** Topic-by-topic → Explanation → Command Mastery → Mock Interview
+> **Approach:** Storytelling → Tamil+English Bilingual → Interview Byheart Points → Hands-on Quick Labs → Mock Interview
+
+---
+
+## 📝 Learning Format Requirements
+
+| Requirement | Detail |
+|-------------|--------|
+| **Teaching Style** | Storytelling — explain like a story, not a textbook. Use real-world scenarios. |
+| **Language** | Bilingual — complete, natural Tamil translation (not transliteration). Every section fully in both languages. |
+| **Interview Prep** | Each section must have "🧠 Byheart for Interview" — exact points/commands to memorize. |
+| **Hands-on** | Each section must have "⚡ Quick Hands-on" — a 2-5 minute exercise to run on server. |
+| **Analogies** | Tamil analogies from daily life (கடை, சமையல், பேருந்து, etc.) |
 
 ---
 

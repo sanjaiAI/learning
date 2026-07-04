@@ -2,7 +2,14 @@
 # Terraform கற்றல் பாதை
 
 > **Scope:** Azure + GCP | Infrastructure-as-Code | Interview Preparation  
-> **Format:** Bilingual (English + Tamil) | Analogies | Commands | Cheat Sheets | Interview Q&A
+> **Format:** Storytelling (கதை சொல்வது போல) | Bilingual Tamil+English | Interview Byheart Points | Quick Hands-on Labs
+
+### 📝 Each Module Contains:
+- 📖 **Story/Analogy** — கதை போல விளக்கம் (not textbook style)
+- 🧠 **Byheart for Interview** — நேர்முகத் தேர்வுக்கு மனப்பாடம் செய்ய வேண்டியவை
+- ⚡ **Quick Hands-on** — 2-5 நிமிட server exercise (203.57.85.108)
+- 📋 **Cheat Sheet** — விரைவு குறிப்பு
+- 🎤 **Interview Q&A** — கேள்வி-பதில் (English + Tamil)
 
 ---
 
