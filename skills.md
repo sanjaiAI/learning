@@ -14,9 +14,26 @@
 |-------------|--------|
 | **Teaching Style** | Storytelling — explain like a story, not a textbook. Use real-world scenarios. |
 | **Language Format** | **TWO VERSIONS**: First complete English version, then complete Tamil version of the SAME content. Not mixed — two separate blocks. |
+| **Target Level** | 14 years experience Technical Architect — interviewer expects concepts, architecture, decision-making, not basic syntax. |
 | **Interview Prep** | Each section must have "🧠 Byheart for Interview" — exact points/commands to memorize. |
+| **Scenario Challenges** | Each module must have "🔥 Scenario Challenge" — real problems an interviewer might ask you to solve (troubleshooting, architecture, security, migration). |
+| **Best Practices** | Each module must cover policies, best practices, helpful tools, governance patterns. |
+| **Real Projects** | Reference real implementations (TVS OTA, EB CI/CT, Gerrit migration, AI pipeline) — separate files in `projects/` folder. |
 | **Hands-on** | Each section must have "⚡ Quick Hands-on" — a 2-5 minute exercise to run on server. |
 | **Analogies** | Tamil analogies from daily life (கடை, சமையல், பேருந்து, etc.) |
+
+### Module Structure:
+```
+📖 Story/Analogy (English then Tamil)
+📊 Concepts & Architecture (English then Tamil)
+🧠 Byheart for Interview (English then Tamil)
+⚡ Quick Hands-on
+🔥 Scenario Challenge (what interviewer may ask)
+🏗️ Real Project Reference (TVS/EB/etc.)
+📋 Best Practices & Tools
+🎤 Interview Q&A (English then Tamil)
+✅ Self-Check
+```
 
 ### Language Format Example:
 ```
@@ -26,6 +43,12 @@
 **தமிழ்:**
 [Same full explanation in Tamil — not transliteration, proper Tamil]
 ```
+
+### Real-Time Project Files (separate, tunable):
+- `projects/tvs_connected_vehicle.md` — TVS OTA Platform (Azure AKS, 3-cluster, multi-VNet)
+- `projects/eb_embedded_ci_ct.md` — Elektrobit CI/CT Lab (hardware-in-loop, Arduino, power sequencing)
+- `projects/bitbucket_gerrit_migration.md` — Bitbucket → Gerrit on Azure Cloud
+- `projects/ai_self_healing_pipeline.md` — AI Self-Healing Pipeline (RAG, MCP, LLM)
 
 ---
 
