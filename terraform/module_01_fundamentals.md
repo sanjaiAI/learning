@@ -903,6 +903,130 @@ State file உண்மைகள்:
 
 ---
 
+## 🔥 Scenario Challenges
+
+**English:**
+
+**Scenario 1: "Your terraform apply failed mid-way. Some resources were created, some weren't. What do you do?"**
+
+Answer framework:
+- Don't panic — Terraform state tracks what was actually created
+- Run `terraform plan` again — it will show what's missing
+- Run `terraform apply` again — Terraform is idempotent, it will only create what's missing
+- If a resource is in a bad state, use `terraform taint` (deprecated) or `terraform apply -replace=RESOURCE` to force recreate
+
+**Scenario 2: "A new developer joins. How do you onboard them to work with your Terraform codebase?"**
+
+Answer framework:
+- Remote state (they don't need the state file locally)
+- `terraform init` pulls providers and connects to backend
+- `terraform plan` is always safe — they can preview without risk
+- PR-based workflow — they never run `apply` locally, CI/CD does it
+- README with workspace/environment conventions
+
+**Scenario 3: "Your company uses cloud console today. How do you migrate to Terraform?"**
+
+Answer framework:
+- Start with `terraform import` to bring existing resources into state
+- Write `.tf` code to match current reality (not desired state yet!)
+- Run `plan` — should show NO changes (code matches reality)
+- Now you can safely modify code to reach desired state
+- Do it incrementally — one resource group/project at a time
+
+**தமிழ்:**
+
+**காட்சி 1: "terraform apply பாதியில் fail ஆனது. சில resources உருவாக்கப்பட்டன, சில இல்லை. என்ன செய்வீர்கள்?"**
+
+பதில் அமைப்பு:
+- பதற்றம் வேண்டாம் — Terraform state உண்மையில் என்ன உருவாக்கப்பட்டது என்று track செய்கிறது
+- மீண்டும் `terraform plan` ஓட்டு — என்ன missing என்று காட்டும்
+- மீண்டும் `terraform apply` ஓட்டு — Terraform idempotent, missing resources-ஐ மட்டும் உருவாக்கும்
+- Resource bad state-ல் இருந்தால், `terraform apply -replace=RESOURCE` பயன்படுத்தி force recreate செய்
+
+**காட்சி 2: "புதிய developer வந்தார். உங்கள் Terraform codebase-ல் எப்படி onboard செய்வீர்கள்?"**
+
+பதில் அமைப்பு:
+- Remote state (state file locally தேவையில்லை)
+- `terraform init` providers + backend-ஐ connect செய்யும்
+- `terraform plan` எப்போதும் safe — risk இல்லாமல் preview செய்யலாம்
+- PR-based workflow — locally `apply` ஓட்ட வேண்டாம், CI/CD செய்யும்
+- README-ல் workspace/environment conventions இருக்க வேண்டும்
+
+**காட்சி 3: "உங்கள் company இன்று cloud console பயன்படுத்துகிறது. Terraform-க்கு எப்படி migrate செய்வீர்கள்?"**
+
+பதில் அமைப்பு:
+- `terraform import` மூலம் existing resources-ஐ state-க்கு கொண்டு வா
+- `.tf` code எழுது — current reality-க்கு match ஆக (desired state அல்ல!)
+- `plan` ஓட்டு — NO changes காட்ட வேண்டும் (code = reality)
+- இப்போது safely code-ஐ modify செய்து desired state-க்கு கொண்டு செல்
+- படிப்படியாக செய் — ஒரு resource group/project-ஆக
+
+---
+
+## 🏗️ Real Project Reference
+
+**English:**
+
+**TVS Connected Vehicle Platform:**
+- Terraform manages 3 AKS clusters + multi-VNet topology
+- Each cluster has its own Terraform state file (blast radius isolation)
+- Shared modules for networking, AKS, storage — reused across environments
+- See: [projects/tvs_connected_vehicle.md](projects/tvs_connected_vehicle.md)
+
+**EB Embedded CI/CT:**
+- Terraform provisions VMSS build agents + AKS platform services
+- Separate state per component (Jenkins infra ≠ Gerrit infra ≠ build agents)
+- Ansible handles VM configuration after Terraform provisioning
+- See: [projects/eb_embedded_ci_ct.md](projects/eb_embedded_ci_ct.md)
+
+**தமிழ்:**
+
+**TVS Connected Vehicle Platform:**
+- Terraform 3 AKS clusters + multi-VNet topology-ஐ நிர்வகிக்கிறது
+- ஒவ்வொரு cluster-க்கும் தனி state file (blast radius isolation)
+- Networking, AKS, storage-க்கு shared modules — environments-ல் reuse
+- பார்: [projects/tvs_connected_vehicle.md](projects/tvs_connected_vehicle.md)
+
+**EB Embedded CI/CT:**
+- Terraform VMSS build agents + AKS platform services-ஐ provision செய்கிறது
+- ஒவ்வொரு component-க்கும் தனி state (Jenkins infra ≠ Gerrit infra ≠ build agents)
+- Terraform provision செய்த பிறகு Ansible VM configuration செய்கிறது
+- பார்: [projects/eb_embedded_ci_ct.md](projects/eb_embedded_ci_ct.md)
+
+---
+
+## 📋 Best Practices
+
+**English:**
+```
+1. ALWAYS use remote state (never local for team projects)
+2. ALWAYS run plan before apply (no blind applies!)
+3. NEVER edit state file manually (use state commands)
+4. LOCK provider versions (prevent surprise breaking changes)
+5. NEVER commit secrets (.tfvars with passwords, state file)
+6. Use terraform fmt (consistent formatting across team)
+7. One resource per logical unit (don't over-pack main.tf)
+8. Tag everything (cost tracking, ownership, environment)
+9. Use variables for anything that changes between environments
+10. PR-based workflow (plan on PR, apply on merge)
+```
+
+**தமிழ்:**
+```
+1. எப்போதும் remote state பயன்படுத்து (team projects-க்கு local வேண்டாம்)
+2. Apply முன் எப்போதும் plan பார் (கண்மூடி apply செய்யாதே!)
+3. State file-ஐ கையால் மாற்றவே கூடாது (state commands பயன்படுத்து)
+4. Provider versions lock செய் (unexpected breaking changes தவிர்)
+5. ரகசியங்களை commit செய்யாதே (.tfvars passwords, state file)
+6. terraform fmt பயன்படுத்து (team-ல் consistent formatting)
+7. ஒரு logical unit-க்கு ஒரு resource (main.tf-ல் எல்லாவற்றையும் திணிக்காதே)
+8. எல்லாவற்றையும் tag செய் (cost tracking, ownership, environment)
+9. Environments இடையே மாறும் எதற்கும் variables பயன்படுத்து
+10. PR-based workflow (PR-ல் plan, merge-ல் apply)
+```
+
+---
+
 ## ✅ Self-Check | சுய மதிப்பீடு
 
 **English:**
